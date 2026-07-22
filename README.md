@@ -9,6 +9,8 @@ one page, instead of juggling Obsidian's Graph View and a separate Gephi
 export. Built for exercises on degrees of separation, Bacon number, and
 small-world theory (Watts-Strogatz) applied to your own social footprint.
 
+![osint-sna web app: interactive graph and metrics side by side](docs/screenshot.jpg)
+
 ## What it does
 
 - **`serve`** — starts the local web app: an interactive graph (colored by
