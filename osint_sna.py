@@ -508,8 +508,14 @@ def build_graph(notes: dict) -> nx.DiGraph:
     name_lookup = {}
     for stem, data in notes.items():
         fm = data["fm"]
-        G.add_node(stem, name=fm.get("name", stem), degree_manual=fm.get("degree"),
-                    platforms=",".join(fm.get("platforms", []) or []))
+        platforms_list = fm.get("platforms", []) or []
+        G.add_node(
+            stem,
+            name=fm.get("name", stem),
+            degree_manual=fm.get("degree"),
+            platforms=",".join(platforms_list),
+            primary_platform=platforms_list[0] if platforms_list else "unknown",
+        )
         if fm.get("name"):
             name_lookup[str(fm["name"]).strip().lower()] = stem
 
@@ -553,6 +559,18 @@ def small_world_baseline(n, edges):
     return c_rand, l_rand
 
 
+def safe_assortativity(G, attribute: str):
+    """Attribute (homophily) assortativity, or None when it isn't defined
+    (fewer than 2 edges, or every node shares the same value)."""
+    if G.number_of_edges() == 0:
+        return None
+    try:
+        value = nx.attribute_assortativity_coefficient(G, attribute)
+    except (ZeroDivisionError, nx.NetworkXError):
+        return None
+    return None if math.isnan(value) else value
+
+
 def cmd_analyze(args):
     vault = args.vault
     require_vault(vault)
@@ -578,8 +596,6 @@ def cmd_analyze(args):
     main_component = UG.subgraph(weak_components[0]).copy()
     clustering = nx.average_clustering(UG)
     reciprocity = nx.overall_reciprocity(G) if G.number_of_edges() else None
-    in_hubs = sorted(G.in_degree, key=lambda x: x[1], reverse=True)[:10]
-    out_hubs = sorted(G.out_degree, key=lambda x: x[1], reverse=True)[:10]
 
     path_len, diameter = None, None
     if nx.is_connected(main_component) and main_component.number_of_nodes() > 1:
@@ -587,6 +603,36 @@ def cmd_analyze(args):
         diameter = nx.diameter(main_component)
 
     c_rand, l_rand = small_world_baseline(main_component.number_of_nodes(), main_component.number_of_edges())
+
+    # Community detection (Louvain modularity optimization) needs an undirected
+    # graph, same as the clustering/small-world metrics above — it groups nodes
+    # into densely-connected subgroups regardless of follow direction.
+    communities = nx.community.louvain_communities(UG, seed=42) if UG.number_of_edges() else [{n} for n in UG.nodes]
+    communities = sorted(communities, key=len, reverse=True)
+    community_of = {stem: idx for idx, members in enumerate(communities) for stem in members}
+    modularity = nx.community.modularity(UG, communities) if UG.number_of_edges() else None
+
+    # "Bridge people" (betweenness) are a structural, direction-agnostic notion —
+    # computed on the undirected projection like communities/clustering above.
+    betweenness = nx.betweenness_centrality(UG)
+    # Closeness here is deliberately computed on the *reversed* directed graph:
+    # closeness_centrality(G) measures distance TO a node (how fast others reach
+    # it); reversing first measures distance FROM a node (how fast it can reach
+    # everyone else), which is what "influence outward" means.
+    closeness = nx.closeness_centrality(G.reverse(copy=True))
+    try:
+        eigenvector = nx.eigenvector_centrality(G, max_iter=2000)
+    except nx.PowerIterationFailedConvergence:
+        eigenvector = {n: 0.0 for n in G.nodes}
+    try:
+        pagerank = nx.pagerank(G)
+    except ImportError:
+        # pagerank needs numpy/scipy; degrade gracefully instead of crashing analyze.
+        pagerank = {n: 0.0 for n in G.nodes}
+
+    density = nx.density(G)
+    level_homophily = safe_assortativity(G, "degree_manual")
+    platform_homophily = safe_assortativity(G, "primary_platform")
 
     lines = []
     lines.append("# Graph analysis\n")
@@ -617,17 +663,43 @@ def cmd_analyze(args):
         for stem in sorted(unreachable):
             lines.append(f"- [[{stem}]]")
 
-    lines.append("\n## Centrality: followers vs. following (in-degree vs. out-degree)\n")
-    lines.append("**Most followed (highest in-degree):**\n")
-    lines.append("| Node | Name | Followers in this graph |")
+    lines.append("\n## Centrality\n")
+    lines.append(
+        "*In/out-degree are direction-literal (followers vs. following). Betweenness runs on the "
+        "undirected projection (bridge people, regardless of follow direction). Closeness measures "
+        "how fast a node's influence reaches everyone else (computed on the reversed directed graph). "
+        "Eigenvector and PageRank run on the directed graph — who's central because important people "
+        "point at them, not just who has the most connections.*\n"
+    )
+    lines.append("| Node | Name | In-deg | Out-deg | Betweenness | Closeness (out) | Eigenvector | PageRank |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    centrality_order = sorted(G.nodes, key=lambda n: pagerank.get(n, 0), reverse=True)[:15]
+    in_degree = dict(G.in_degree)
+    out_degree = dict(G.out_degree)
+    for stem in centrality_order:
+        name = notes[stem]["fm"].get("name", stem)
+        lines.append(
+            f"| [[{stem}]] | {name} | {in_degree.get(stem, 0)} | {out_degree.get(stem, 0)} | "
+            f"{betweenness.get(stem, 0):.3f} | {closeness.get(stem, 0):.3f} | "
+            f"{eigenvector.get(stem, 0):.3f} | {pagerank.get(stem, 0):.3f} |"
+        )
+    if len(G.nodes) > 15:
+        lines.append(f"\n*(showing top 15 of {len(G.nodes)} nodes by PageRank)*")
+
+    lines.append("\n## Community detection (Louvain)\n")
+    lines.append(
+        f"- Communities found: **{len(communities)}** "
+        + (f"— modularity: **{modularity:.3f}**" if modularity is not None else "")
+    )
+    lines.append(
+        "*Modularity above ~0.3 usually means the communities are meaningfully denser internally than "
+        "you'd expect by chance — real subgroups, not an artifact of the algorithm.*\n"
+    )
+    lines.append("| Community | Size | Members |")
     lines.append("|---|---|---|")
-    for stem, deg in in_hubs:
-        lines.append(f"| [[{stem}]] | {notes[stem]['fm'].get('name', stem)} | {deg} |")
-    lines.append("\n**Follows the most (highest out-degree):**\n")
-    lines.append("| Node | Name | Accounts followed in this graph |")
-    lines.append("|---|---|---|")
-    for stem, deg in out_hubs:
-        lines.append(f"| [[{stem}]] | {notes[stem]['fm'].get('name', stem)} | {deg} |")
+    for idx, members in enumerate(communities):
+        member_links = ", ".join(f"[[{stem}]]" for stem in sorted(members, key=lambda s: notes[s]["fm"].get("name", s)))
+        lines.append(f"| {idx} | {len(members)} | {member_links} |")
 
     lines.append("\n## Small-world metric (Watts-Strogatz)\n")
     lines.append("*Computed on the undirected projection of the graph (direction is ignored here).*\n")
@@ -645,6 +717,31 @@ def cmd_analyze(args):
             "signature (dense clusters + short shortcuts), just like Kevin Bacon's collaboration network."
         )
 
+    lines.append("\n## Network density & homophily\n")
+    lines.append(
+        f"- Density: **{density:.4f}** — share of all possible directed connections that actually exist "
+        f"(1.0 would mean everyone follows everyone)."
+    )
+    if level_homophily is not None:
+        lines.append(
+            f"- Homophily by OSINT level: **{level_homophily:+.3f}** — positive means people mostly "
+            "connect within their own level (1/2/3), negative means connections mostly cross levels."
+        )
+    else:
+        lines.append("- Homophily by OSINT level: not defined (needs more than one level with edges between them).")
+    if platform_homophily is not None:
+        lines.append(
+            f"- Homophily by platform: **{platform_homophily:+.3f}** — positive means people mostly "
+            "connect within the same platform, negative means connections mostly cross platforms."
+        )
+    else:
+        lines.append("- Homophily by platform: not defined (needs more than one platform with edges between them).")
+    lines.append(
+        "\n*Homophily here is the attribute assortativity coefficient (Newman): ranges from -1 (perfectly "
+        "cross-cutting) to +1 (perfectly segregated by that attribute), 0 means the attribute doesn't "
+        "predict who connects to whom.*"
+    )
+
     out_path = vault / "00-Dashboard" / "Graph-Analysis.md"
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -655,10 +752,15 @@ def cmd_analyze(args):
     summary.add_row("Directed edges", str(G.number_of_edges()))
     summary.add_row("Weakly connected components", str(len(weak_components)))
     summary.add_row("Reciprocity", f"{reciprocity:.1%}" if reciprocity is not None else "n/a")
+    summary.add_row("Density", f"{density:.4f}")
+    summary.add_row("Communities (Louvain)", f"{len(communities)}" + (f" (Q={modularity:.3f})" if modularity is not None else ""))
     summary.add_row("Avg. clustering", f"{clustering:.3f}")
     if path_len is not None:
         summary.add_row("Avg. path length", f"{path_len:.3f}")
         summary.add_row("Diameter", str(diameter))
+    if centrality_order:
+        top_stem = centrality_order[0]
+        summary.add_row("Top by PageRank", notes[top_stem]["fm"].get("name", top_stem))
     console.print(summary)
 
     console.print(f"[green]✓[/green] Report written to [bold]{out_path}[/bold]")

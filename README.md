@@ -30,8 +30,20 @@ exercises on degrees of separation, Bacon number, and small-world theory
     each node by following outgoing edges, and how many hops until each node
     can *reach you* — your "Bacon number" in both directions.
   - Reciprocity: what share of edges are followed back.
-  - In-degree vs. out-degree centrality: who's followed the most in your
-    graph vs. who follows the most.
+  - **Centrality**, one table with six angles on "who matters": in-degree /
+    out-degree (followers vs. following), betweenness (bridge people who
+    connect otherwise-separate parts of your network), closeness (how fast
+    a node's influence reaches everyone else), and eigenvector centrality /
+    PageRank (importance by *who* points at you, not just how many —
+    someone followed by a handful of very central people can outrank
+    someone with more but less-connected followers).
+  - **Community detection** (Louvain modularity optimization): groups nodes
+    into densely-connected subgroups automatically, with a modularity score
+    to tell whether those communities are real structure or noise.
+  - **Density & homophily**: what share of possible connections actually
+    exist, and whether people mostly connect within their own OSINT level
+    or platform (homophily) or mostly cross those lines (heterophily) —
+    the attribute assortativity coefficient, -1 to +1.
   - Average clustering coefficient and average path length (on the
     undirected projection of the graph), compared against an equivalent
     random graph, to check for the small-world signature.
@@ -90,8 +102,9 @@ cd osint-sna-tool
 ```
 
 This creates a local virtual environment (`venv/`) with the dependencies
-(`networkx`, `pyyaml`, `rich`) and publishes an executable wrapper at
-`~/.local/bin/osint-sna`. Make sure `~/.local/bin` is on your `PATH`.
+(`networkx`, `numpy`, `scipy`, `pyyaml`, `rich`, `textual`) and publishes an
+executable wrapper at `~/.local/bin/osint-sna`. Make sure `~/.local/bin` is
+on your `PATH`.
 
 Requires Python 3.9+.
 
