@@ -28,10 +28,12 @@ import networkx as nx
 import yaml
 from rich import box
 from rich.align import Align
+from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
+from rich.text import Text
 
 from plugins import available_platforms, get_importer
 
@@ -658,10 +660,18 @@ def cmd_analyze(args):
 # ---------------------------------------------------------------------------
 
 MENU_ACCENT = "cyan"
+MENU_MUTED = "bright_black"
+
+
+def section_header(title: str, subtitle: str = ""):
+    text = Text(title, style=f"bold {MENU_ACCENT}")
+    if subtitle:
+        text.append(f"\n{subtitle}", style=MENU_MUTED)
+    console.print(Panel(text, border_style=MENU_ACCENT, box=box.ROUNDED, padding=(1, 2)))
 
 
 def ask_text(msg: str, default: str = None, required: bool = False) -> str:
-    label = f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}"
+    label = f"  [bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] {msg}"
     while True:
         val = Prompt.ask(label, default=default) if default is not None else Prompt.ask(label)
         val = val.strip()
@@ -671,16 +681,16 @@ def ask_text(msg: str, default: str = None, required: bool = False) -> str:
             return default
         if not required:
             return ""
-        console.print("    [red]This field is required.[/red]")
+        console.print("    [red]Este campo es obligatorio.[/red]")
 
 
 def ask_bool(msg: str, default: bool = False) -> bool:
-    return Confirm.ask(f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}", default=default)
+    return Confirm.ask(f"  [bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] {msg}", default=default)
 
 
 def ask_choice(msg: str, choices: list, default: str = None) -> str:
     return Prompt.ask(
-        f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}",
+        f"  [bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] {msg}",
         choices=choices,
         default=default,
         show_choices=True,
@@ -689,46 +699,61 @@ def ask_choice(msg: str, choices: list, default: str = None) -> str:
 
 def print_banner():
     console.print()
-    body = Align.center(f"[dim italic]OSINT / Social Network Analysis toolkit[/dim italic]")
+    body = Align.center(
+        "[bold white]Mapea, importa y analiza tu red social[/bold white]\n"
+        f"[{MENU_MUTED}]OSINT / Social Network Analysis para vaults de Obsidian[/{MENU_MUTED}]"
+    )
     console.print(Panel(
         body,
-        title=f"[bold {MENU_ACCENT}]osint-sna[/bold {MENU_ACCENT}]",
+        title=f"[bold {MENU_ACCENT}] OSINT-SNA [/bold {MENU_ACCENT}]",
+        subtitle=f"[{MENU_MUTED}]menu interactivo[/{MENU_MUTED}]",
         border_style=MENU_ACCENT,
-        box=box.ROUNDED,
-        padding=(1, 6),
+        box=box.DOUBLE,
+        padding=(1, 4),
     ))
 
 
 def print_menu(actions: dict):
-    table = Table(box=box.ROUNDED, show_header=False, border_style=MENU_ACCENT, padding=(0, 2))
-    table.add_column(style=f"bold {MENU_ACCENT}", justify="right", width=3)
-    table.add_column(style="white")
-    for key, (label, _) in actions.items():
-        table.add_row(key, label)
-    table.add_row("[dim]0[/dim]", "[dim]Exit[/dim]")
-    console.print(table)
+    cards = []
+    for key, (label, description, _) in actions.items():
+        content = (
+            f"[bold {MENU_ACCENT}]{key}[/bold {MENU_ACCENT}]  [bold white]{label}[/bold white]\n"
+            f"[{MENU_MUTED}]{description}[/{MENU_MUTED}]"
+        )
+        cards.append(Panel(content, border_style="dim", box=box.ROUNDED, padding=(1, 2)))
+    console.print(Columns(cards, equal=True, expand=True))
+    console.print(
+        Panel(
+            f"[{MENU_MUTED}]0[/{MENU_MUTED}]  Salir",
+            border_style="dim",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        )
+    )
 
 
 def menu_init():
-    vault = Path(ask_text("Path of the vault to create", required=True)).expanduser()
-    name = ask_text("Your name for the ego node", default="Me")
-    project_name = ask_text("Project name for the dashboard", default="") or None
-    platforms_raw = ask_text("Platforms to map (comma-separated)", default="instagram")
+    section_header("Crear vault", "Genera carpetas, plantillas, dashboard y nodo ME.")
+    vault = Path(ask_text("Ruta del vault a crear", required=True)).expanduser()
+    name = ask_text("Tu nombre para el nodo principal", default="Me")
+    project_name = ask_text("Nombre del proyecto para el dashboard", default="") or None
+    platforms_raw = ask_text("Plataformas a mapear (separadas por coma)", default="instagram")
     platforms = [p.strip() for p in platforms_raw.split(",") if p.strip()]
     console.print()
     cmd_init(argparse.Namespace(vault=vault, name=name, project_name=project_name, platforms=platforms))
 
 
 def menu_import():
+    section_header("Importar exportacion", "Crea o actualiza nodos de nivel 1 desde tus datos oficiales.")
     platforms = available_platforms()
     default_platform = "instagram" if "instagram" in platforms else (platforms[0] if platforms else None)
     platform = ask_choice("Platform", choices=platforms, default=default_platform)
-    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
     export_dir = Path(ask_text(
-        "Path to your CSV's folder" if platform == "generic" else "Path to the unzipped export",
+        "Ruta a la carpeta del CSV" if platform == "generic" else "Ruta a la exportacion descomprimida",
         required=True,
     )).expanduser()
-    dry_run = ask_bool("Simulate without writing changes? (dry-run)", default=False)
+    dry_run = ask_bool("Simular sin escribir cambios? (dry-run)", default=False)
 
     ns = argparse.Namespace(
         vault=vault, platform=platform, export_dir=export_dir, dry_run=dry_run,
@@ -736,25 +761,26 @@ def menu_import():
         relationship_col="relationship", default_relationship="observed_public",
     )
     if platform == "generic":
-        ns.file = ask_text("CSV filename (leave empty to auto-detect a single .csv)", default="") or None
-        ns.handle_col = ask_text("Column with the handle/username", default="handle")
-        ns.name_col = ask_text("Column with the display name", default="name")
-        ns.relationship_col = ask_text("Column with the relationship tag", default="relationship")
-        ns.default_relationship = ask_text("Default relationship when the column is empty/missing", default="observed_public")
+        ns.file = ask_text("Archivo CSV (vacio para autodetectar un unico .csv)", default="") or None
+        ns.handle_col = ask_text("Columna con handle/usuario", default="handle")
+        ns.name_col = ask_text("Columna con nombre visible", default="name")
+        ns.relationship_col = ask_text("Columna con etiqueta de relacion", default="relationship")
+        ns.default_relationship = ask_text("Relacion por defecto si falta el valor", default="observed_public")
     console.print()
     cmd_import(ns)
 
 
 def menu_add_node():
-    vault = Path(ask_text("Vault path", required=True)).expanduser()
-    name = ask_text("Display name", required=True)
-    handle = ask_text("Handle (username)", required=True)
-    platform = ask_text("Platform", default="instagram")
-    degree = int(ask_choice("Degree", choices=["2", "3"], default="2"))
-    via = ask_text("Bridge node slug (filename without .md)", required=True)
-    relationship = ask_text("Relationship", default="observed_public")
-    location = ask_text("Stated location", default="")
-    notes = ask_text("Notes", default="")
+    section_header("Agregar nodo", "Registra manualmente contactos de nivel 2 o 3.")
+    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
+    name = ask_text("Nombre visible", required=True)
+    handle = ask_text("Handle (usuario)", required=True)
+    platform = ask_text("Plataforma", default="instagram")
+    degree = int(ask_choice("Nivel", choices=["2", "3"], default="2"))
+    via = ask_text("Nodo puente (archivo sin .md)", required=True)
+    relationship = ask_text("Relacion", default="observed_public")
+    location = ask_text("Ubicacion declarada", default="")
+    notes = ask_text("Notas", default="")
     console.print()
     cmd_add_node(argparse.Namespace(
         vault=vault, name=name, handle=handle, platform=platform, degree=degree,
@@ -763,18 +789,19 @@ def menu_add_node():
 
 
 def menu_analyze():
-    vault = Path(ask_text("Vault path", required=True)).expanduser()
-    graphml = ask_bool("Also export graph.graphml for Gephi?", default=False)
+    section_header("Analizar grafo", "Calcula distancias, centralidad, reciprocidad y metricas small-world.")
+    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
+    graphml = ask_bool("Exportar tambien graph.graphml para Gephi?", default=False)
     console.print()
     cmd_analyze(argparse.Namespace(vault=vault, graphml=graphml))
 
 
 def cmd_menu(args):
     actions = {
-        "1": ("Create a new vault", menu_init),
-        "2": ("Import a platform export (level 1)", menu_import),
-        "3": ("Add a level 2/3 node by hand", menu_add_node),
-        "4": ("Analyze graph", menu_analyze),
+        "1": ("Crear vault", "Inicializa un vault nuevo de Obsidian.", menu_init),
+        "2": ("Importar datos", "Procesa una exportacion oficial o CSV.", menu_import),
+        "3": ("Agregar nodo", "Captura conexiones indirectas a mano.", menu_add_node),
+        "4": ("Analizar grafo", "Genera reporte y metricas de red.", menu_analyze),
     }
     print_banner()
     while True:
@@ -782,17 +809,17 @@ def cmd_menu(args):
         print_menu(actions)
         try:
             choice = Prompt.ask(
-                f"\n[bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] Select an option",
+                f"\n[bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] Elige una opcion",
                 choices=list(actions) + ["0"],
                 show_choices=False,
             )
         except (KeyboardInterrupt, EOFError):
-            console.print(f"\n[{MENU_ACCENT}]Goodbye![/{MENU_ACCENT}]")
+            console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
             return
         if choice == "0":
-            console.print(f"\n[{MENU_ACCENT}]Goodbye![/{MENU_ACCENT}]")
+            console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
             return
-        label, func = actions[choice]
+        label, _, func = actions[choice]
         console.rule(f"[bold {MENU_ACCENT}]{label}[/bold {MENU_ACCENT}]", style=MENU_ACCENT)
         console.print()
         try:
@@ -800,7 +827,7 @@ def cmd_menu(args):
         except SystemExit:
             pass
         except (KeyboardInterrupt, EOFError):
-            console.print(f"\n[yellow]Cancelled.[/yellow]")
+            console.print(f"\n[yellow]Cancelado.[/yellow]")
         console.print()
 
 
