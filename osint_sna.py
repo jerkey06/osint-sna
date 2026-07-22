@@ -16,6 +16,8 @@ linkedin.py, twitter.py, generic.py for custom CSV datasets). Run
 Each subcommand has its own --help with details.
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 import re
@@ -34,6 +36,18 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
+
+try:
+    from textual.app import App, ComposeResult
+    from textual.containers import Container, Horizontal
+    from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
+
+    TEXTUAL_AVAILABLE = True
+except ImportError:
+    App = object
+    ComposeResult = object
+    Container = Horizontal = Footer = Header = Label = ListItem = ListView = Static = None
+    TEXTUAL_AVAILABLE = False
 
 from plugins import available_platforms, get_importer
 
@@ -663,6 +677,161 @@ MENU_ACCENT = "cyan"
 MENU_MUTED = "bright_black"
 
 
+class OsintMenuApp(App):
+    CSS = """
+    Screen {
+        background: #071014;
+        color: #d8f3dc;
+    }
+
+    Header {
+        background: #0b2d2f;
+        color: #d8f3dc;
+        text-style: bold;
+    }
+
+    Footer {
+        background: #0b2d2f;
+        color: #95d5b2;
+    }
+
+    #shell {
+        height: 1fr;
+        padding: 2 4;
+        background: #071014;
+    }
+
+    #hero {
+        height: auto;
+        margin-bottom: 1;
+        padding: 1 2;
+        border: heavy #2dd4bf;
+        background: #092326;
+        color: #d8f3dc;
+    }
+
+    #brand {
+        text-style: bold;
+        color: #5eead4;
+    }
+
+    #tagline {
+        color: #95d5b2;
+    }
+
+    #workspace {
+        height: 1fr;
+    }
+
+    #menu {
+        width: 44;
+        height: 1fr;
+        border: round #2dd4bf;
+        background: #0a1f24;
+        padding: 1;
+    }
+
+    ListItem {
+        height: 5;
+        margin-bottom: 1;
+        padding: 1 2;
+        border: round #1f4f55;
+        background: #0d2a30;
+        color: #d8f3dc;
+    }
+
+    ListItem.--highlight {
+        background: #123c45;
+        border: tall #facc15;
+        color: #ffffff;
+    }
+
+    #intel {
+        width: 1fr;
+        height: 1fr;
+        margin-left: 2;
+        padding: 1 2;
+        border: round #3b82f6;
+        background: #081827;
+        color: #bfdbfe;
+    }
+
+    .label-title {
+        text-style: bold;
+        color: #f8fafc;
+    }
+
+    .label-desc {
+        color: #99f6e4;
+    }
+
+    .signal {
+        color: #facc15;
+        text-style: bold;
+    }
+    """
+
+    BINDINGS = [
+        ("q", "quit", "Salir"),
+        ("escape", "quit", "Salir"),
+        ("enter", "select_cursor", "Abrir"),
+    ]
+
+    def __init__(self, actions: dict):
+        super().__init__()
+        self.actions = actions
+        self.title = "osint-sna"
+        self.sub_title = "OSINT / Social Network Analysis"
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Container(id="shell"):
+            yield Static(
+                "[#5eead4 bold]OSINT-SNA[/]\n"
+                "[#95d5b2]Mapa, importa y analiza tu red social en un vault de Obsidian.[/]",
+                id="hero",
+            )
+            with Horizontal(id="workspace"):
+                yield ListView(
+                    *[
+                        ListItem(
+                            Label(
+                                f"[bold #f8fafc]{label}[/]\n[#99f6e4]{description}[/]",
+                            ),
+                            id=f"action-{key}",
+                        )
+                        for key, (label, description, _) in self.actions.items()
+                    ],
+                    ListItem(Label("[bold #f8fafc]Salir[/]\n[#99f6e4]Cerrar la herramienta.[/]"), id="action-0"),
+                    id="menu",
+                )
+                yield Static(
+                    "[#facc15 bold]OPERACION[/]\n\n"
+                    "Usa flechas para moverte.\n"
+                    "Enter ejecuta la accion seleccionada.\n"
+                    "Esc o q cierra el panel.\n\n"
+                    "[#facc15 bold]ALCANCE[/]\n\n"
+                    "Nivel 0: ego node.\n"
+                    "Nivel 1: exportaciones oficiales.\n"
+                    "Nivel 2/3: observacion manual.\n\n"
+                    "[#facc15 bold]ETICA[/]\n\n"
+                    "Sin scraping automatizado. Mantiene el enfoque en datos propios y notas minimas.",
+                    id="intel",
+                )
+        yield Footer()
+
+    def on_mount(self):
+        self.query_one("#menu", ListView).focus()
+
+    def action_select_cursor(self):
+        menu = self.query_one("#menu", ListView)
+        if menu.highlighted is not None:
+            self.exit(menu.children[menu.highlighted].id.removeprefix("action-"))
+
+    def on_list_view_selected(self, event: ListView.Selected):
+        self.exit(event.item.id.removeprefix("action-"))
+
+
 def section_header(title: str, subtitle: str = ""):
     text = Text(title, style=f"bold {MENU_ACCENT}")
     if subtitle:
@@ -803,6 +972,28 @@ def cmd_menu(args):
         "3": ("Agregar nodo", "Captura conexiones indirectas a mano.", menu_add_node),
         "4": ("Analizar grafo", "Genera reporte y metricas de red.", menu_analyze),
     }
+    if TEXTUAL_AVAILABLE:
+        while True:
+            try:
+                choice = OsintMenuApp(actions).run()
+            except (KeyboardInterrupt, EOFError):
+                console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+                return
+            if not choice or choice == "0":
+                console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+                return
+            label, _, func = actions[choice]
+            console.rule(f"[bold {MENU_ACCENT}]{label}[/bold {MENU_ACCENT}]", style=MENU_ACCENT)
+            console.print()
+            try:
+                func()
+            except SystemExit:
+                pass
+            except (KeyboardInterrupt, EOFError):
+                console.print(f"\n[yellow]Cancelado.[/yellow]")
+            ask_text("Presiona Enter para volver al panel", default="")
+        return
+
     print_banner()
     while True:
         console.print()

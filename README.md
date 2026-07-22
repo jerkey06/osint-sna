@@ -7,9 +7,10 @@ exercises on degrees of separation, Bacon number, and small-world theory
 
 ## What it does
 
-- **`menu`** — interactive terminal interface: a numbered menu that prompts
-  for the data each operation needs and calls the functions below. Activates
-  automatically if you run `osint-sna` without any subcommand.
+- **`menu`** — interactive terminal interface: a full-screen TUI with keyboard
+  navigation. Move with the arrow keys, press Enter to select an operation,
+  then answer the prompts for that workflow. Activates automatically if you
+  run `osint-sna` without any subcommand.
 - **`init`** — scaffolds a brand new Obsidian vault: folders by degree of
   separation (level 0 = you, level 1 = direct connections, level 2 = contacts
   of your contacts, level 3 = indirect surroundings), a person-node template,
@@ -104,9 +105,10 @@ osint-sna
 osint-sna menu
 ```
 
-Shows a numbered menu (create vault, import a platform export, add node,
-analyze) that prompts for the data on the console, so you don't have to
-remember the flags for each subcommand.
+Shows a full-screen OSINT-style terminal menu. Move with the arrow keys,
+press Enter to select an operation, or press `q` / Esc to exit. Each workflow
+still prompts for the data it needs, so you don't have to remember the flags
+for each subcommand.
 
 ### Command-line usage (scriptable)
 
