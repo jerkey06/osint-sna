@@ -1,17 +1,23 @@
 # osint-sna
 
-CLI for practicing OSINT and Social Network Analysis (SNA) by mapping your own
-social network as a graph in [Obsidian](https://obsidian.md). Built for
-exercises on degrees of separation, Bacon number, and small-world theory
-(Watts-Strogatz) applied to your own social footprint.
+Tool for practicing OSINT and Social Network Analysis (SNA) by mapping your
+own social network as a graph. Data lives as plain markdown notes (a vault,
+compatible with [Obsidian](https://obsidian.md) if you want to open it there
+too), and a local web app shows the interactive graph and every metric —
+distances, centrality, communities, small-world signature, homophily — in
+one page, instead of juggling Obsidian's Graph View and a separate Gephi
+export. Built for exercises on degrees of separation, Bacon number, and
+small-world theory (Watts-Strogatz) applied to your own social footprint.
 
 ## What it does
 
-- **`menu`** — interactive terminal interface: a full-screen TUI with keyboard
-  navigation. Move with the arrow keys, press Enter to select an operation,
-  then answer the prompts for that workflow. Activates automatically if you
-  run `osint-sna` without any subcommand.
-- **`init`** — scaffolds a brand new Obsidian vault: folders by degree of
+- **`serve`** — starts the local web app: an interactive graph (colored by
+  OSINT level, community, or platform; sized by a centrality metric of your
+  choice) alongside every metric `analyze` computes, plus forms to import
+  data and add nodes without leaving the browser. Runs at
+  `http://127.0.0.1:8765/` by default and opens automatically. Activates
+  automatically if you run `osint-sna` without any subcommand.
+- **`init`** — scaffolds a brand new vault: folders by degree of
   separation (level 0 = you, level 1 = direct connections, level 2 = contacts
   of your contacts, level 3 = indirect surroundings), a person-node template,
   a dashboard, and a Graph View colored by level.
@@ -81,7 +87,7 @@ Run `osint-sna import --help` to see the full list of installed platforms.
 **Writing your own plugin:** drop a new `plugins/whatever.py` that subclasses
 `Importer` (platform name, `parse(export_dir, **options) -> list[Connection]`)
 and ends with `PLUGIN = YourClass`. It'll show up in `--platform` choices and
-the interactive menu automatically — see any existing plugin as a template.
+the web app's Import form automatically — see any existing plugin as a template.
 
 ## Why it exists
 
@@ -102,7 +108,7 @@ cd osint-sna-tool
 ```
 
 This creates a local virtual environment (`venv/`) with the dependencies
-(`networkx`, `numpy`, `scipy`, `pyyaml`, `rich`, `textual`) and publishes an
+(`networkx`, `numpy`, `scipy`, `pyyaml`, `rich`, `flask`) and publishes an
 executable wrapper at `~/.local/bin/osint-sna`. Make sure `~/.local/bin` is
 on your `PATH`.
 
@@ -110,18 +116,23 @@ Requires Python 3.9+.
 
 ## Usage
 
-### Interactive terminal interface
+### Web app
 
 ```bash
 osint-sna
-# or explicitly:
-osint-sna menu
+# or explicitly, with options:
+osint-sna serve --vault ~/MySocialNetwork --port 8765
 ```
 
-Shows a full-screen OSINT-style terminal menu. Move with the arrow keys,
-press Enter to select an operation, or press `q` / Esc to exit. Each workflow
-still prompts for the data it needs, so you don't have to remember the flags
-for each subcommand.
+Starts a local Flask server at `http://127.0.0.1:8765/` and opens it in your
+browser. One page shows the interactive graph (drag, zoom, click a node for
+its profile and centrality figures; toggle coloring by OSINT level,
+community, or platform; toggle sizing by any centrality metric) and the same
+summary metrics `analyze` computes, side by side. "Import data" and "Add
+node" buttons open forms for those workflows without touching the terminal.
+Everything runs against the vault path typed in the top bar — point it at an
+existing vault, or create one from the empty-state prompt. `--no-browser`
+skips the automatic tab open (e.g. on a headless machine you're tunneling to).
 
 ### Command-line usage (scriptable)
 
@@ -143,8 +154,10 @@ osint-sna add-node --vault ~/MySocialNetwork \
 osint-sna analyze --vault ~/MySocialNetwork --graphml
 ```
 
-Open the resulting vault in Obsidian. The Graph View comes preconfigured
-with colors by level. For the dashboard tables, install the community
+Run `osint-sna serve --vault ~/MySocialNetwork` to see the graph and metrics.
+The vault is still plain markdown, so it also opens fine in Obsidian if you
+want its native Graph View (preconfigured with colors by level) or the
+`--graphml` export in Gephi; for the dashboard tables, install the community
 plugin [Dataview](https://github.com/blacksmithgu/obsidian-dataview).
 
 ## Ethics notes

@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osint-sna</title>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --surface-2: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --border: rgba(11,11,11,0.10);
+    --good: #0ca30c;
+    --critical: #d03b3b;
+    --cat-1: #2a78d6; /* level 0 / ego */
+    --cat-2: #eb6834; /* level 1 */
+    --cat-3: #1baf7a; /* level 2 */
+    --cat-4: #eda100; /* level 3 */
+    --cat-5: #e87ba4;
+    --cat-6: #008300;
+    --cat-7: #4a3aa7;
+    --cat-8: #e34948;
+    --cat-other: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --surface-2: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --gridline: #2c2c2a;
+      --border: rgba(255,255,255,0.10);
+      --good: #0ca30c;
+      --critical: #e66767;
+      --cat-1: #3987e5;
+      --cat-2: #d95926;
+      --cat-3: #199e70;
+      --cat-4: #c98500;
+      --cat-5: #d55181;
+      --cat-6: #008300;
+      --cat-7: #9085e9;
+      --cat-8: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-2: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --border: rgba(255,255,255,0.10);
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --cat-7: #9085e9;
+    --cat-8: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--surface-2);
+    color: var(--text-primary);
+  }
+  body { display: flex; flex-direction: column; }
+
+  #topbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  #topbar .brand { font-weight: 700; margin-right: 8px; white-space: nowrap; }
+  #topbar input[type=text] {
+    flex: 1 1 240px; min-width: 160px;
+    padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-primary);
+  }
+  #topbar select, #topbar button {
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-primary);
+    cursor: pointer; font-size: 13px;
+  }
+  #topbar button.primary { background: var(--cat-1); color: #fff; border-color: transparent; }
+  #topbar label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+
+  #main { flex: 1; display: flex; min-height: 0; }
+  #cy { flex: 1; background: var(--surface-2); }
+
+  #sidebar {
+    width: 320px; flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--surface-1);
+    overflow-y: auto;
+    padding: 14px;
+  }
+  #sidebar h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); margin: 18px 0 8px;
+  }
+  #sidebar h3:first-child { margin-top: 0; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-tile {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    background: var(--surface-2);
+  }
+  .stat-tile .v { font-size: 18px; font-weight: 700; }
+  .stat-tile .l { font-size: 11px; color: var(--text-muted); }
+
+  .legend-row { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 4px; color: var(--text-secondary); }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  #detail { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+  #detail .name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  #detail .row { display: flex; justify-content: space-between; gap: 8px; }
+  #detail .empty { color: var(--text-muted); font-style: italic; }
+
+  .note { font-size: 12px; color: var(--text-muted); }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 10px; padding: 0;
+    background: var(--surface-1); color: var(--text-primary);
+    width: min(440px, 92vw);
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  dialog form { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  dialog h2 { margin: 0 0 4px; font-size: 16px; }
+  dialog label { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 3px; }
+  dialog input, dialog select {
+    padding: 7px 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-primary); font-size: 13px;
+  }
+  dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  dialog button { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
+  dialog button.primary { background: var(--cat-1); color: #fff; border-color: transparent; }
+
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--text-primary); color: var(--surface-1);
+    padding: 8px 16px; border-radius: 8px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    z-index: 1000;
+  }
+  #toast.show { opacity: 0.95; }
+  #toast.error { background: var(--critical); color: #fff; }
+
+  #empty-state {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; color: var(--text-secondary); text-align: center; padding: 20px;
+  }
+  #empty-state button { margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="brand">osint-sna</span>
+  <input type="text" id="vault-input" placeholder="/path/to/vault">
+  <button id="load-btn" class="primary">Load</button>
+  <label>Color by
+    <select id="color-mode">
+      <option value="level">OSINT level</option>
+      <option value="community">Community</option>
+      <option value="platform">Platform</option>
+    </select>
+  </label>
+  <label>Size by
+    <select id="size-metric">
+      <option value="pagerank">PageRank</option>
+      <option value="betweenness">Betweenness</option>
+      <option value="closeness">Closeness</option>
+      <option value="eigenvector">Eigenvector</option>
+      <option value="in_degree">In-degree</option>
+      <option value="out_degree">Out-degree</option>
+    </select>
+  </label>
+  <input type="text" id="search-input" placeholder="Find a node…" style="flex: 0 1 160px;">
+  <button id="import-btn">Import data</button>
+  <button id="add-node-btn">Add node</button>
+  <button id="reanalyze-btn">Re-analyze</button>
+  <a id="graphml-link" href="#" style="text-decoration:none;"><button type="button">Export GraphML</button></a>
+</div>
+
+<div id="main">
+  <div id="cy"></div>
+  <div id="empty-state" style="display:none;"></div>
+  <div id="sidebar">
+    <h3>Summary</h3>
+    <div class="stat-grid" id="stats"></div>
+
+    <h3>Legend</h3>
+    <div id="legend"></div>
+
+    <h3>Selected node</h3>
+    <div id="detail"><div class="empty">Click a node to see its profile and metrics.</div></div>
+  </div>
+</div>
+
+<dialog id="init-dialog">
+  <form method="dialog">
+    <h2>Initialize vault</h2>
+    <p class="note">No vault found at this path yet. Create one?</p>
+    <label>Your name<input type="text" id="init-name" value="Me"></label>
+    <label>Project name (optional)<input type="text" id="init-project"></label>
+    <label>Platforms (comma-separated)<input type="text" id="init-platforms" value="instagram"></label>
+    <div class="actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="init-submit">Create vault</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="import-dialog">
+  <form method="dialog">
+    <h2>Import data</h2>
+    <label>Platform
+      <select id="import-platform"></select>
+    </label>
+    <label>Export directory (unzipped, or CSV folder for "generic")<input type="text" id="import-export-dir"></label>
+    <div id="import-generic-fields" style="display:none; flex-direction:column; gap:10px;">
+      <label>CSV filename (blank = autodetect)<input type="text" id="import-file"></label>
+      <label>Handle column<input type="text" id="import-handle-col" value="handle"></label>
+      <label>Name column<input type="text" id="import-name-col" value="name"></label>
+      <label>Relationship column<input type="text" id="import-relationship-col" value="relationship"></label>
+      <label>Default relationship<input type="text" id="import-default-relationship" value="observed_public"></label>
+    </div>
+    <label style="flex-direction:row; align-items:center;"><input type="checkbox" id="import-dry-run" style="width:auto;"> Dry run (don't write changes)</label>
+    <div class="actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="import-submit">Import</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="node-dialog">
+  <form method="dialog">
+    <h2>Add node (level 2/3)</h2>
+    <label>Display name<input type="text" id="node-name"></label>
+    <label>Handle<input type="text" id="node-handle"></label>
+    <label>Platform<input type="text" id="node-platform" value="instagram"></label>
+    <label>Level
+      <select id="node-degree"><option value="2">2</option><option value="3">3</option></select>
+    </label>
+    <label>Bridge node (existing node id it connects via)<input type="text" id="node-via"></label>
+    <label>Relationship<input type="text" id="node-relationship" value="observed_public"></label>
+    <label>Location<input type="text" id="node-location"></label>
+    <div class="actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="node-submit">Add node</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const CAT_COLORS = ['--cat-1','--cat-2','--cat-3','--cat-4','--cat-5','--cat-6','--cat-7','--cat-8'];
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+let cy = null;
+let lastPayload = null;
+let colorMode = 'level';
+let sizeMetric = 'pagerank';
+let categoryColorMap = {};
+
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = isError ? 'show error' : 'show';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+function currentVault() {
+  return document.getElementById('vault-input').value.trim();
+}
+
+function saveVault(v) {
+  localStorage.setItem('osint-sna:vault', v);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
+  return body;
+}
+
+function levelLabel(level) {
+  if (level === 0) return 'Level 0 (you)';
+  if (level === undefined || level === null) return 'Level ?';
+  return `Level ${level}`;
+}
+
+// `data` is a plain object with the node's fields — either a payload node's
+// `.data`, or a live Cytoscape element's `.data()` (call it, don't treat the
+// `.data` method itself as the object).
+function categoryKey(data) {
+  if (colorMode === 'level') return levelLabel(data.level);
+  if (colorMode === 'community') return `Community ${data.community}`;
+  return data.primary_platform || 'unknown';
+}
+
+function buildCategoryColorMap(nodes) {
+  const seen = [];
+  for (const n of nodes) {
+    const label = categoryKey(n.data);
+    if (!seen.includes(label)) seen.push(label);
+  }
+  const map = {};
+  seen.forEach((label, i) => {
+    map[label] = i < CAT_COLORS.length ? cssVar(CAT_COLORS[i]) : cssVar('--cat-other');
+  });
+  return map;
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  el.innerHTML = '';
+  const entries = Object.entries(categoryColorMap);
+  if (!entries.length) { el.innerHTML = '<div class="note">Load a vault to see the legend.</div>'; return; }
+  for (const [label, color] of entries) {
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<span class="swatch" style="background:${color}"></span><span>${label}</span>`;
+    el.appendChild(row);
+  }
+}
+
+function normalize(values) {
+  const nums = values.filter(v => typeof v === 'number');
+  const min = Math.min(...nums), max = Math.max(...nums);
+  return v => {
+    if (typeof v !== 'number' || max === min) return 0.5;
+    return (v - min) / (max - min);
+  };
+}
+
+function renderGraph(payload) {
+  lastPayload = payload;
+  const nodes = payload.elements.nodes;
+  const edges = payload.elements.edges;
+
+  categoryColorMap = buildCategoryColorMap(nodes);
+  renderLegend();
+
+  const norm = normalize(nodes.map(n => n.data[sizeMetric]));
+
+  if (cy) cy.destroy();
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: { nodes, edges },
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color': ele => categoryColorMap[categoryKey(ele.data())] || cssVar('--cat-other'),
+          'label': 'data(name)',
+          'font-size': 9,
+          'color': cssVar('--text-secondary'),
+          'text-valign': 'bottom',
+          'text-margin-y': 4,
+          'width': ele => 18 + norm(ele.data(sizeMetric)) * 46,
+          'height': ele => 18 + norm(ele.data(sizeMetric)) * 46,
+          'border-width': ele => ele.data('is_ego') ? 3 : (ele.data('unreachable') ? 2 : 0),
+          'border-color': ele => ele.data('is_ego') ? cssVar('--good') : cssVar('--critical'),
+          'border-style': ele => ele.data('unreachable') && !ele.data('is_ego') ? 'dashed' : 'solid',
+          'opacity': ele => ele.data('unreachable') && !ele.data('is_ego') ? 0.55 : 1,
+        }
+      },
+      {
+        selector: 'node:selected',
+        style: { 'border-width': 4, 'border-color': cssVar('--cat-1'), 'border-style': 'solid' }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 1.3,
+          'line-color': cssVar('--gridline'),
+          'target-arrow-color': cssVar('--gridline'),
+          'target-arrow-shape': 'triangle',
+          'arrow-scale': 0.7,
+          'curve-style': 'bezier',
+          'opacity': 0.85,
+        }
+      },
+    ],
+    layout: { name: 'cose', animate: false, idealEdgeLength: 90, nodeRepulsion: 6000 },
+  });
+
+  cy.on('tap', 'node', evt => showDetail(evt.target.data()));
+
+  renderStats(payload.summary);
+}
+
+function fmtPct(v) { return v === null || v === undefined ? 'n/a' : (v * 100).toFixed(1) + '%'; }
+function fmtNum(v, d) { return v === null || v === undefined ? 'n/a' : Number(v).toFixed(d ?? 3); }
+function fmtSigned(v, d) { return v === null || v === undefined ? 'n/a' : (v >= 0 ? '+' : '') + Number(v).toFixed(d ?? 3); }
+
+function statTile(label, value) {
+  return `<div class="stat-tile"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+}
+
+function renderStats(s) {
+  const el = document.getElementById('stats');
+  el.innerHTML = [
+    statTile('Nodes', s.nodes),
+    statTile('Edges', s.edges),
+    statTile('Components', s.components),
+    statTile('Unreachable', s.unreachable),
+    statTile('Reciprocity', fmtPct(s.reciprocity)),
+    statTile('Density', fmtNum(s.density, 4)),
+    statTile('Communities', s.communities + (s.modularity !== null ? ` (Q=${fmtNum(s.modularity, 2)})` : '')),
+    statTile('Avg clustering', fmtNum(s.clustering)),
+    statTile('Avg path len', s.path_len !== null ? fmtNum(s.path_len) : 'n/a'),
+    statTile('Diameter', s.diameter ?? 'n/a'),
+    statTile('Level homophily', fmtSigned(s.level_homophily)),
+    statTile('Platform homophily', fmtSigned(s.platform_homophily)),
+  ].join('');
+}
+
+function showDetail(d) {
+  const el = document.getElementById('detail');
+  const handles = Object.entries(d.handles || {}).map(([p, h]) => `${p}: ${h}`).join(', ') || '—';
+  el.innerHTML = `
+    <div class="name">${d.name}${d.is_ego ? ' (you)' : ''}</div>
+    <div class="row"><span>Level</span><span>${d.level ?? '?'}</span></div>
+    <div class="row"><span>Platforms</span><span>${(d.platforms || []).join(', ') || '—'}</span></div>
+    <div class="row"><span>Handles</span><span>${handles}</span></div>
+    <div class="row"><span>Location</span><span>${d.location || '—'}</span></div>
+    <div class="row"><span>Community</span><span>${d.community ?? '—'}</span></div>
+    <div class="row"><span>You → them</span><span>${d.dist_from_ego ?? 'unreachable'}</span></div>
+    <div class="row"><span>Them → you</span><span>${d.dist_to_ego ?? 'unreachable'}</span></div>
+    <div class="row"><span>In / out degree</span><span>${d.in_degree} / ${d.out_degree}</span></div>
+    <div class="row"><span>Betweenness</span><span>${fmtNum(d.betweenness)}</span></div>
+    <div class="row"><span>Closeness</span><span>${fmtNum(d.closeness)}</span></div>
+    <div class="row"><span>Eigenvector</span><span>${fmtNum(d.eigenvector)}</span></div>
+    <div class="row"><span>PageRank</span><span>${fmtNum(d.pagerank)}</span></div>
+    ${d.bio ? `<p>${d.bio}</p>` : ''}
+    ${d.notes ? `<p class="note">${d.notes}</p>` : ''}
+  `;
+}
+
+function showEmptyState(message, showInit) {
+  document.getElementById('cy').style.display = 'none';
+  const el = document.getElementById('empty-state');
+  el.style.display = 'flex';
+  el.innerHTML = `<div>${message}</div>` + (showInit ? '<button id="empty-init-btn" class="primary">Create vault here</button>' : '');
+  if (showInit) {
+    document.getElementById('empty-init-btn').onclick = () => document.getElementById('init-dialog').showModal();
+  }
+}
+
+function hideEmptyState() {
+  document.getElementById('cy').style.display = 'block';
+  document.getElementById('empty-state').style.display = 'none';
+}
+
+async function loadVault() {
+  const vault = currentVault();
+  if (!vault) { toast('Enter a vault path first.', true); return; }
+  saveVault(vault);
+  document.getElementById('graphml-link').href = `/api/export/graphml?vault=${encodeURIComponent(vault)}`;
+  try {
+    const status = await api(`/api/vault/status?vault=${encodeURIComponent(vault)}`);
+    if (!status.initialized) {
+      showEmptyState('This path has no vault yet.', true);
+      return;
+    }
+    await runAnalysis();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function runAnalysis() {
+  const vault = currentVault();
+  try {
+    const payload = await api('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vault }),
+    });
+    if (!payload.elements.nodes.length) {
+      showEmptyState('Vault initialized but no person notes yet — import data or add a node.', false);
+      return;
+    }
+    hideEmptyState();
+    renderGraph(payload);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function loadPlatforms() {
+  try {
+    const { platforms } = await api('/api/platforms');
+    const sel = document.getElementById('import-platform');
+    sel.innerHTML = platforms.map(p => `<option value="${p}">${p}</option>`).join('');
+    sel.onchange = () => {
+      document.getElementById('import-generic-fields').style.display = sel.value === 'generic' ? 'flex' : 'none';
+    };
+    sel.onchange();
+  } catch (e) { /* platforms endpoint should always work */ }
+}
+
+document.getElementById('load-btn').onclick = loadVault;
+document.getElementById('reanalyze-btn').onclick = () => runAnalysis().then(() => toast('Re-analyzed.'));
+
+document.getElementById('color-mode').onchange = e => { colorMode = e.target.value; if (lastPayload) renderGraph(lastPayload); };
+document.getElementById('size-metric').onchange = e => { sizeMetric = e.target.value; if (lastPayload) renderGraph(lastPayload); };
+
+document.getElementById('search-input').addEventListener('input', e => {
+  if (!cy) return;
+  const q = e.target.value.trim().toLowerCase();
+  cy.nodes().forEach(n => n.style('opacity', 1));
+  if (!q) return;
+  cy.nodes().forEach(n => {
+    const match = (n.data('name') || '').toLowerCase().includes(q) || n.id().toLowerCase().includes(q);
+    n.style('opacity', match ? 1 : 0.15);
+  });
+});
+
+document.getElementById('init-dialog').addEventListener('close', async function () {
+  if (this.returnValue !== 'ok') return;
+  try {
+    await api('/api/vault/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vault: currentVault(),
+        name: document.getElementById('init-name').value || 'Me',
+        project_name: document.getElementById('init-project').value || null,
+        platforms: document.getElementById('init-platforms').value.split(',').map(s => s.trim()).filter(Boolean),
+      }),
+    });
+    toast('Vault created.');
+    await loadVault();
+  } catch (e) { toast(e.message, true); }
+});
+
+document.getElementById('import-btn').onclick = () => document.getElementById('import-dialog').showModal();
+document.getElementById('import-dialog').addEventListener('close', async function () {
+  if (this.returnValue !== 'ok') return;
+  try {
+    const result = await api('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vault: currentVault(),
+        platform: document.getElementById('import-platform').value,
+        export_dir: document.getElementById('import-export-dir').value,
+        dry_run: document.getElementById('import-dry-run').checked,
+        file: document.getElementById('import-file').value || null,
+        handle_col: document.getElementById('import-handle-col').value,
+        name_col: document.getElementById('import-name-col').value,
+        relationship_col: document.getElementById('import-relationship-col').value,
+        default_relationship: document.getElementById('import-default-relationship').value,
+      }),
+    });
+    toast(`Import done: ${result.created} created, ${result.updated} updated${result.dry_run ? ' (dry run)' : ''}.`);
+    if (!result.dry_run) await runAnalysis();
+  } catch (e) { toast(e.message, true); }
+});
+
+document.getElementById('add-node-btn').onclick = () => document.getElementById('node-dialog').showModal();
+document.getElementById('node-dialog').addEventListener('close', async function () {
+  if (this.returnValue !== 'ok') return;
+  try {
+    await api('/api/add-node', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vault: currentVault(),
+        name: document.getElementById('node-name').value,
+        handle: document.getElementById('node-handle').value,
+        platform: document.getElementById('node-platform').value,
+        degree: parseInt(document.getElementById('node-degree').value, 10),
+        via: document.getElementById('node-via').value,
+        relationship: document.getElementById('node-relationship').value,
+        location: document.getElementById('node-location').value,
+      }),
+    });
+    toast('Node added.');
+    await runAnalysis();
+  } catch (e) { toast(e.message, true); }
+});
+
+(async function init() {
+  await loadPlatforms();
+  const saved = localStorage.getItem('osint-sna:vault');
+  if (saved) {
+    document.getElementById('vault-input').value = saved;
+  } else {
+    try {
+      const { vault } = await api('/api/default-vault');
+      if (vault) document.getElementById('vault-input').value = vault;
+    } catch (e) {}
+  }
+  if (document.getElementById('vault-input').value) {
+    loadVault();
+  } else {
+    showEmptyState('Enter a vault path above and click Load.', false);
+  }
+})();
+</script>
+</body>
+</html>

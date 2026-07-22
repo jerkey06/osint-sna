@@ -24,3 +24,4 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
   echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 echo "Try it with: osint-sna --help"
+echo "Or just run 'osint-sna' with no arguments to launch the local web app."
