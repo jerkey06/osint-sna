@@ -874,9 +874,9 @@ class OsintMenuApp(App):
     """
 
     BINDINGS = [
-        ("q", "quit", "Salir"),
-        ("escape", "quit", "Salir"),
-        ("enter", "select_cursor", "Abrir"),
+        ("q", "quit", "Quit"),
+        ("escape", "quit", "Quit"),
+        ("enter", "select_cursor", "Open"),
     ]
 
     def __init__(self, actions: dict):
@@ -890,7 +890,7 @@ class OsintMenuApp(App):
         with Container(id="shell"):
             yield Static(
                 "[#5eead4 bold]OSINT-SNA[/]\n"
-                "[#95d5b2]Mapa, importa y analiza tu red social en un vault de Obsidian.[/]",
+                "[#95d5b2]Map, import, and analyze your social network in an Obsidian vault.[/]",
                 id="hero",
             )
             with Horizontal(id="workspace"):
@@ -904,20 +904,20 @@ class OsintMenuApp(App):
                         )
                         for key, (label, description, _) in self.actions.items()
                     ],
-                    ListItem(Label("[bold #f8fafc]Salir[/]\n[#99f6e4]Cerrar la herramienta.[/]"), id="action-0"),
+                    ListItem(Label("[bold #f8fafc]Quit[/]\n[#99f6e4]Close the tool.[/]"), id="action-0"),
                     id="menu",
                 )
                 yield Static(
-                    "[#facc15 bold]OPERACION[/]\n\n"
-                    "Usa flechas para moverte.\n"
-                    "Enter ejecuta la accion seleccionada.\n"
-                    "Esc o q cierra el panel.\n\n"
-                    "[#facc15 bold]ALCANCE[/]\n\n"
-                    "Nivel 0: ego node.\n"
-                    "Nivel 1: exportaciones oficiales.\n"
-                    "Nivel 2/3: observacion manual.\n\n"
-                    "[#facc15 bold]ETICA[/]\n\n"
-                    "Sin scraping automatizado. Mantiene el enfoque en datos propios y notas minimas.",
+                    "[#facc15 bold]OPERATION[/]\n\n"
+                    "Use arrow keys to move.\n"
+                    "Enter executes the selected action.\n"
+                    "Esc or q closes the panel.\n\n"
+                    "[#facc15 bold]SCOPE[/]\n\n"
+                    "Level 0: ego node.\n"
+                    "Level 1: official exports.\n"
+                    "Level 2/3: manual observation.\n\n"
+                    "[#facc15 bold]ETHICS[/]\n\n"
+                    "No automated scraping. Keeps focus on owned data and minimal notes.",
                     id="intel",
                 )
         yield Footer()
@@ -952,7 +952,7 @@ def ask_text(msg: str, default: str = None, required: bool = False) -> str:
             return default
         if not required:
             return ""
-        console.print("    [red]Este campo es obligatorio.[/red]")
+        console.print("    [red]This field is required.[/red]")
 
 
 def ask_bool(msg: str, default: bool = False) -> bool:
@@ -971,13 +971,13 @@ def ask_choice(msg: str, choices: list, default: str = None) -> str:
 def print_banner():
     console.print()
     body = Align.center(
-        "[bold white]Mapea, importa y analiza tu red social[/bold white]\n"
-        f"[{MENU_MUTED}]OSINT / Social Network Analysis para vaults de Obsidian[/{MENU_MUTED}]"
+        "[bold white]Map, import, and analyze your social network[/bold white]\n"
+        f"[{MENU_MUTED}]OSINT / Social Network Analysis for Obsidian vaults[/{MENU_MUTED}]"
     )
     console.print(Panel(
         body,
         title=f"[bold {MENU_ACCENT}] OSINT-SNA [/bold {MENU_ACCENT}]",
-        subtitle=f"[{MENU_MUTED}]menu interactivo[/{MENU_MUTED}]",
+        subtitle=f"[{MENU_MUTED}]interactive menu[/{MENU_MUTED}]",
         border_style=MENU_ACCENT,
         box=box.DOUBLE,
         padding=(1, 4),
@@ -995,7 +995,7 @@ def print_menu(actions: dict):
     console.print(Columns(cards, equal=True, expand=True))
     console.print(
         Panel(
-            f"[{MENU_MUTED}]0[/{MENU_MUTED}]  Salir",
+            f"[{MENU_MUTED}]0[/{MENU_MUTED}]  Quit",
             border_style="dim",
             box=box.ROUNDED,
             padding=(0, 2),
@@ -1004,27 +1004,27 @@ def print_menu(actions: dict):
 
 
 def menu_init():
-    section_header("Crear vault", "Genera carpetas, plantillas, dashboard y nodo ME.")
-    vault = Path(ask_text("Ruta del vault a crear", required=True)).expanduser()
-    name = ask_text("Tu nombre para el nodo principal", default="Me")
-    project_name = ask_text("Nombre del proyecto para el dashboard", default="") or None
-    platforms_raw = ask_text("Plataformas a mapear (separadas por coma)", default="instagram")
+    section_header("Create vault", "Generates folders, templates, dashboard, and ME node.")
+    vault = Path(ask_text("Path of the vault to create", required=True)).expanduser()
+    name = ask_text("Your name for the main node", default="Me")
+    project_name = ask_text("Project name for the dashboard", default="") or None
+    platforms_raw = ask_text("Platforms to map (separated by comma)", default="instagram")
     platforms = [p.strip() for p in platforms_raw.split(",") if p.strip()]
     console.print()
     cmd_init(argparse.Namespace(vault=vault, name=name, project_name=project_name, platforms=platforms))
 
 
 def menu_import():
-    section_header("Importar exportacion", "Crea o actualiza nodos de nivel 1 desde tus datos oficiales.")
+    section_header("Import export", "Creates or updates level-1 nodes from your official data.")
     platforms = available_platforms()
     default_platform = "instagram" if "instagram" in platforms else (platforms[0] if platforms else None)
     platform = ask_choice("Platform", choices=platforms, default=default_platform)
-    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
     export_dir = Path(ask_text(
-        "Ruta a la carpeta del CSV" if platform == "generic" else "Ruta a la exportacion descomprimida",
+        "Path to CSV folder" if platform == "generic" else "Path to unzipped export",
         required=True,
     )).expanduser()
-    dry_run = ask_bool("Simular sin escribir cambios? (dry-run)", default=False)
+    dry_run = ask_bool("Simulate without writing changes? (dry-run)", default=False)
 
     ns = argparse.Namespace(
         vault=vault, platform=platform, export_dir=export_dir, dry_run=dry_run,
@@ -1032,26 +1032,26 @@ def menu_import():
         relationship_col="relationship", default_relationship="observed_public",
     )
     if platform == "generic":
-        ns.file = ask_text("Archivo CSV (vacio para autodetectar un unico .csv)", default="") or None
-        ns.handle_col = ask_text("Columna con handle/usuario", default="handle")
-        ns.name_col = ask_text("Columna con nombre visible", default="name")
-        ns.relationship_col = ask_text("Columna con etiqueta de relacion", default="relationship")
-        ns.default_relationship = ask_text("Relacion por defecto si falta el valor", default="observed_public")
+        ns.file = ask_text("CSV file (empty to autodetect a single .csv)", default="") or None
+        ns.handle_col = ask_text("Column with handle/username", default="handle")
+        ns.name_col = ask_text("Column with display name", default="name")
+        ns.relationship_col = ask_text("Column with relationship tag", default="relationship")
+        ns.default_relationship = ask_text("Default relationship if value missing", default="observed_public")
     console.print()
     cmd_import(ns)
 
 
 def menu_add_node():
-    section_header("Agregar nodo", "Registra manualmente contactos de nivel 2 o 3.")
-    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
-    name = ask_text("Nombre visible", required=True)
-    handle = ask_text("Handle (usuario)", required=True)
-    platform = ask_text("Plataforma", default="instagram")
-    degree = int(ask_choice("Nivel", choices=["2", "3"], default="2"))
-    via = ask_text("Nodo puente (archivo sin .md)", required=True)
-    relationship = ask_text("Relacion", default="observed_public")
-    location = ask_text("Ubicacion declarada", default="")
-    notes = ask_text("Notas", default="")
+    section_header("Add node", "Manually registers level 2 or 3 contacts.")
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    name = ask_text("Display name", required=True)
+    handle = ask_text("Handle (username)", required=True)
+    platform = ask_text("Platform", default="instagram")
+    degree = int(ask_choice("Level", choices=["2", "3"], default="2"))
+    via = ask_text("Bridge node (file without .md)", required=True)
+    relationship = ask_text("Relationship", default="observed_public")
+    location = ask_text("Stated location", default="")
+    notes = ask_text("Notes", default="")
     console.print()
     cmd_add_node(argparse.Namespace(
         vault=vault, name=name, handle=handle, platform=platform, degree=degree,
@@ -1060,29 +1060,29 @@ def menu_add_node():
 
 
 def menu_analyze():
-    section_header("Analizar grafo", "Calcula distancias, centralidad, reciprocidad y metricas small-world.")
-    vault = Path(ask_text("Ruta del vault", required=True)).expanduser()
-    graphml = ask_bool("Exportar tambien graph.graphml para Gephi?", default=False)
+    section_header("Analyze graph", "Computes distances, centrality, reciprocity, and small-world metrics.")
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    graphml = ask_bool("Also export graph.graphml for Gephi?", default=False)
     console.print()
     cmd_analyze(argparse.Namespace(vault=vault, graphml=graphml))
 
 
 def cmd_menu(args):
     actions = {
-        "1": ("Crear vault", "Inicializa un vault nuevo de Obsidian.", menu_init),
-        "2": ("Importar datos", "Procesa una exportacion oficial o CSV.", menu_import),
-        "3": ("Agregar nodo", "Captura conexiones indirectas a mano.", menu_add_node),
-        "4": ("Analizar grafo", "Genera reporte y metricas de red.", menu_analyze),
+        "1": ("Create vault", "Initializes a new Obsidian vault.", menu_init),
+        "2": ("Import data", "Processes an official export or CSV.", menu_import),
+        "3": ("Add node", "Captures indirect connections manually.", menu_add_node),
+        "4": ("Analyze graph", "Generates report and network metrics.", menu_analyze),
     }
     if TEXTUAL_AVAILABLE:
         while True:
             try:
                 choice = OsintMenuApp(actions).run()
             except (KeyboardInterrupt, EOFError):
-                console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+                console.print(f"\n[{MENU_ACCENT}]Goodbye.[/{MENU_ACCENT}]")
                 return
             if not choice or choice == "0":
-                console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+                console.print(f"\n[{MENU_ACCENT}]Goodbye.[/{MENU_ACCENT}]")
                 return
             label, _, func = actions[choice]
             console.rule(f"[bold {MENU_ACCENT}]{label}[/bold {MENU_ACCENT}]", style=MENU_ACCENT)
@@ -1092,8 +1092,8 @@ def cmd_menu(args):
             except SystemExit:
                 pass
             except (KeyboardInterrupt, EOFError):
-                console.print(f"\n[yellow]Cancelado.[/yellow]")
-            ask_text("Presiona Enter para volver al panel", default="")
+                console.print(f"\n[yellow]Cancelled.[/yellow]")
+            ask_text("Press Enter to return to the menu", default="")
         return
 
     print_banner()
@@ -1102,15 +1102,15 @@ def cmd_menu(args):
         print_menu(actions)
         try:
             choice = Prompt.ask(
-                f"\n[bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] Elige una opcion",
+                f"\n[bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] Choose an option",
                 choices=list(actions) + ["0"],
                 show_choices=False,
             )
         except (KeyboardInterrupt, EOFError):
-            console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+            console.print(f"\n[{MENU_ACCENT}]Goodbye.[/{MENU_ACCENT}]")
             return
         if choice == "0":
-            console.print(f"\n[{MENU_ACCENT}]Hasta luego.[/{MENU_ACCENT}]")
+            console.print(f"\n[{MENU_ACCENT}]Goodbye.[/{MENU_ACCENT}]")
             return
         label, _, func = actions[choice]
         console.rule(f"[bold {MENU_ACCENT}]{label}[/bold {MENU_ACCENT}]", style=MENU_ACCENT)
@@ -1120,7 +1120,7 @@ def cmd_menu(args):
         except SystemExit:
             pass
         except (KeyboardInterrupt, EOFError):
-            console.print(f"\n[yellow]Cancelado.[/yellow]")
+            console.print(f"\n[yellow]Cancelled.[/yellow]")
         console.print()
 
 
