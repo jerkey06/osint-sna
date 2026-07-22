@@ -7,6 +7,9 @@ pequeño (Watts-Strogatz) aplicados a tu propia huella social.
 
 ## Qué hace
 
+- **`menu`** — interfaz de terminal interactiva: menú numerado que pide los
+  datos de cada operación y llama a las funciones de abajo. Se activa
+  automáticamente si corrés `osint-sna` sin ningún subcomando.
 - **`init`** — scaffolda un vault de Obsidian nuevo: carpetas por grado de
   separación (nivel 0 = vos, nivel 1 = conexiones directas, nivel 2 = contactos
   de tus contactos, nivel 3 = entorno indirecto), plantilla de nodo-persona,
@@ -54,6 +57,20 @@ Asegurate de que `~/.local/bin` esté en tu `PATH`.
 Requiere Python 3.9+.
 
 ## Uso
+
+### Interfaz de terminal interactiva
+
+```bash
+osint-sna
+# o explícitamente:
+osint-sna menu
+```
+
+Muestra un menú numerado (crear vault, importar Instagram, agregar nodo,
+analizar) que va pidiendo los datos por consola, sin tener que recordar los
+flags de cada subcomando.
+
+### Uso por línea de comandos (scripteable)
 
 ```bash
 # 1. Crear un vault nuevo

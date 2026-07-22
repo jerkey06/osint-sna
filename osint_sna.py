@@ -560,12 +560,115 @@ def cmd_analyze(args):
 
 
 # ---------------------------------------------------------------------------
+# menu (interfaz de terminal interactiva)
+# ---------------------------------------------------------------------------
+
+def prompt(msg: str, default: str = None, required: bool = False) -> str:
+    suffix = f" [{default}]" if default is not None else ""
+    while True:
+        val = input(f"{msg}{suffix}: ").strip()
+        if val:
+            return val
+        if default is not None:
+            return default
+        if not required:
+            return ""
+        print("  Este dato es obligatorio.")
+
+
+def prompt_yes_no(msg: str, default: bool = False) -> bool:
+    suffix = "[S/n]" if default else "[s/N]"
+    val = input(f"{msg} {suffix}: ").strip().lower()
+    if not val:
+        return default
+    return val in ("s", "si", "sí", "y", "yes")
+
+
+def menu_init():
+    vault = Path(prompt("Ruta del vault a crear", required=True)).expanduser()
+    name = prompt("Tu nombre para el nodo ego", default="Yo")
+    project_name = prompt("Nombre del proyecto para el dashboard", default="") or None
+    platforms_raw = prompt("Plataformas a mapear (separadas por coma)", default="instagram")
+    platforms = [p.strip() for p in platforms_raw.split(",") if p.strip()]
+    cmd_init(argparse.Namespace(vault=vault, name=name, project_name=project_name, platforms=platforms))
+
+
+def menu_import_instagram():
+    vault = Path(prompt("Ruta del vault", required=True)).expanduser()
+    export_dir = Path(prompt("Ruta al export de Instagram descomprimido", required=True)).expanduser()
+    dry_run = prompt_yes_no("¿Simular sin escribir cambios? (dry-run)", default=False)
+    cmd_import_instagram(argparse.Namespace(vault=vault, export_dir=export_dir, dry_run=dry_run))
+
+
+def menu_add_node():
+    vault = Path(prompt("Ruta del vault", required=True)).expanduser()
+    name = prompt("Nombre visible", required=True)
+    handle = prompt("Handle (usuario)", required=True)
+    platform = prompt("Plataforma", default="instagram")
+    while True:
+        degree_raw = prompt("Grado (2 o 3)", default="2")
+        if degree_raw in ("2", "3"):
+            degree = int(degree_raw)
+            break
+        print("  Ingresá 2 o 3.")
+    via = prompt("Slug del nodo puente (nombre de archivo sin .md)", required=True)
+    relationship = prompt("Relación", default="observed_public")
+    location = prompt("Ubicación declarada", default="")
+    notes = prompt("Notas", default="")
+    cmd_add_node(argparse.Namespace(
+        vault=vault, name=name, handle=handle, platform=platform, degree=degree,
+        via=via, relationship=relationship, location=location, notes=notes,
+    ))
+
+
+def menu_analyze():
+    vault = Path(prompt("Ruta del vault", required=True)).expanduser()
+    graphml = prompt_yes_no("¿Exportar también grafo.graphml para Gephi?", default=False)
+    cmd_analyze(argparse.Namespace(vault=vault, graphml=graphml))
+
+
+def cmd_menu(args):
+    actions = {
+        "1": ("Crear un vault nuevo", menu_init),
+        "2": ("Importar export de Instagram (nivel 1)", menu_import_instagram),
+        "3": ("Agregar nodo de nivel 2/3 a mano", menu_add_node),
+        "4": ("Analizar grafo", menu_analyze),
+    }
+    print("=== osint-sna — menú interactivo ===")
+    while True:
+        print("\nOpciones:")
+        for key, (label, _) in actions.items():
+            print(f"  {key}. {label}")
+        print("  0. Salir")
+        try:
+            choice = input("\nElegí una opción: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nListo, ¡hasta la próxima!")
+            return
+        if choice in ("0", "q", "salir", "exit"):
+            print("Listo, ¡hasta la próxima!")
+            return
+        action = actions.get(choice)
+        if not action:
+            print("Opción inválida.")
+            continue
+        _, func = action
+        try:
+            func()
+        except SystemExit as e:
+            if e.code:
+                print(f"Error: {e.code}")
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelado.")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(prog="osint-sna", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="command", required=True)
+    sub = ap.add_subparsers(dest="command", required=False)
 
     p_init = sub.add_parser("init", help="Crear un vault nuevo desde cero")
     p_init.add_argument("--vault", required=True, type=Path)
@@ -597,8 +700,14 @@ def main():
     p_analyze.add_argument("--graphml", action="store_true", help="También exportar grafo.graphml para Gephi")
     p_analyze.set_defaults(func=cmd_analyze)
 
+    p_menu = sub.add_parser("menu", help="Menú interactivo (se activa también si no pasás ningún subcomando)")
+    p_menu.set_defaults(func=cmd_menu)
+
     args = ap.parse_args()
-    args.func(args)
+    if args.command is None:
+        cmd_menu(args)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":
