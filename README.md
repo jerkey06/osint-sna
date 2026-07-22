@@ -22,15 +22,20 @@ exercises on degrees of separation, Bacon number, and small-world theory
 - **`add-node`** — quick scaffolding for level-2/3 nodes surveyed by hand
   (name, handle, degree, bridge node), without rewriting the YAML
   frontmatter every time.
-- **`analyze`** — builds the real graph from the vault's `[[wikilinks]]`
-  (with [networkx](https://networkx.org/)) and computes:
-  - Real distance (BFS) from you to each node — your "Bacon number"
-    relative to anyone in the vault.
-  - Average clustering coefficient and average path length, compared
-    against an equivalent random graph, to check for the small-world
-    signature.
-  - The most central nodes (hubs) of your network.
-  - Optional export to `.graphml` to open in [Gephi](https://gephi.org/).
+- **`analyze`** — builds the real graph from the vault's `[[wikilinks]]` as a
+  **directed graph** (with [networkx](https://networkx.org/)), since
+  following someone on a real social network is asymmetric, and computes:
+  - Directed distance (BFS) both ways: how many hops until you can *reach*
+    each node by following outgoing edges, and how many hops until each node
+    can *reach you* — your "Bacon number" in both directions.
+  - Reciprocity: what share of edges are followed back.
+  - In-degree vs. out-degree centrality: who's followed the most in your
+    graph vs. who follows the most.
+  - Average clustering coefficient and average path length (on the
+    undirected projection of the graph), compared against an equivalent
+    random graph, to check for the small-world signature.
+  - Optional export to `.graphml` (directed) to open in
+    [Gephi](https://gephi.org/).
 
 ## Why it exists
 
