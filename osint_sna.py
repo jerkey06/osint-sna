@@ -22,10 +22,23 @@ from pathlib import Path
 
 import networkx as nx
 import yaml
+from rich import box
+from rich.align import Align
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
 
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)")
 NODE_FOLDERS = ["01-Level-0", "02-Level-1", "03-Level-2", "04-Level-3"]
+
+console = Console()
+
+
+def die(message: str):
+    console.print(f"[bold red]✗[/bold red] {message}")
+    sys.exit(1)
 
 
 def slugify(text: str) -> str:
@@ -48,7 +61,7 @@ def write_note(path: Path, frontmatter: dict, body: str):
 
 def require_vault(vault: Path):
     if not (vault / "01-Level-0").exists():
-        sys.exit(
+        die(
             f"{vault} doesn't look like a vault initialized by this tool "
             f"(missing 01-Level-0/). Run 'osint-sna init --vault {vault}' first."
         )
@@ -201,7 +214,7 @@ GRAPH_JSON = """{
 def cmd_init(args):
     vault = args.vault
     if vault.exists() and any(vault.iterdir()):
-        sys.exit(f"{vault} already exists and is not empty. Pick another path or empty it first.")
+        die(f"{vault} already exists and is not empty. Pick another path or empty it first.")
     for folder in NODE_FOLDERS + ["90-Templates", "00-Dashboard", ".obsidian"]:
         (vault / folder).mkdir(parents=True, exist_ok=True)
 
@@ -240,9 +253,9 @@ def cmd_init(args):
 
     (vault / ".obsidian" / "graph.json").write_text(GRAPH_JSON, encoding="utf-8")
 
-    print(f"Vault created at {vault}")
-    print(f"1. Fill in your handle at {vault / '01-Level-0' / 'ME.md'}")
-    print(f"2. Read {vault / '00-Dashboard' / 'README.md'} for the workflow")
+    console.print(f"[green]✓[/green] Vault created at [bold]{vault}[/bold]")
+    console.print(f"  [dim]1.[/dim] Fill in your handle at {vault / '01-Level-0' / 'ME.md'}")
+    console.print(f"  [dim]2.[/dim] Read {vault / '00-Dashboard' / 'README.md'} for the workflow")
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +266,7 @@ def find_export_files(export_dir: Path):
     followers = list(export_dir.rglob("followers_1.json")) or list(export_dir.rglob("followers*.json"))
     following = list(export_dir.rglob("following.json"))
     if not followers or not following:
-        sys.exit(
+        die(
             f"Couldn't find followers_*.json / following.json under {export_dir}. "
             "Make sure it's the unzipped export in JSON format."
         )
@@ -364,13 +377,20 @@ def cmd_import_instagram(args):
         action = upsert_instagram_note(vault, username, relationship, observed, args.dry_run)
         stats[action] += 1
 
-    print(f"Total level-1 accounts: {len(all_usernames)}")
-    print(f"  Mutual:          {sum(1 for u in all_usernames if u in followers and u in following)}")
-    print(f"  Follow you only: {sum(1 for u in all_usernames if u in followers and u not in following)}")
-    print(f"  You follow only: {sum(1 for u in all_usernames if u not in followers and u in following)}")
-    print(f"Notes created: {stats['created']} | Notes updated: {stats['updated']}")
+    table = Table(box=box.SIMPLE, show_header=False, border_style="dim")
+    table.add_column(style="dim")
+    table.add_column(justify="right", style="bold")
+    table.add_row("Total level-1 accounts", str(len(all_usernames)))
+    table.add_row("Mutual", str(sum(1 for u in all_usernames if u in followers and u in following)))
+    table.add_row("Follow you only", str(sum(1 for u in all_usernames if u in followers and u not in following)))
+    table.add_row("You follow only", str(sum(1 for u in all_usernames if u not in followers and u in following)))
+    table.add_row("Notes created", str(stats["created"]))
+    table.add_row("Notes updated", str(stats["updated"]))
+    console.print(table)
     if args.dry_run:
-        print("(dry-run: nothing was written)")
+        console.print("[yellow]dry-run: nothing was written[/yellow]")
+    else:
+        console.print("[green]✓[/green] Level-1 notes are up to date")
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +406,7 @@ def cmd_add_node(args):
     path = folder / f"{slugify(args.handle)}.md"
 
     if path.exists():
-        print(f"Already exists: {path}. Not overwriting.")
+        console.print(f"[yellow]![/yellow] Already exists: {path}. Not overwriting.")
         return
 
     fm = {
@@ -424,7 +444,7 @@ def cmd_add_node(args):
 {args.notes}
 """
     write_note(path, fm, body)
-    print(f"Created: {path}")
+    console.print(f"[green]✓[/green] Created: [bold]{path}[/bold]")
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +494,7 @@ def find_ego(notes: dict) -> str:
             return stem
     if "ME" in notes:
         return "ME"
-    sys.exit("Couldn't find the ego node (node_role: ego in the frontmatter, or name it ME.md).")
+    die("Couldn't find the ego node (node_role: ego in the frontmatter, or name it ME.md).")
 
 
 def small_world_baseline(n, edges):
@@ -491,7 +511,7 @@ def cmd_analyze(args):
     require_vault(vault)
     notes = load_notes(vault)
     if not notes:
-        sys.exit("Couldn't find any person notes in the vault yet.")
+        die("Couldn't find any person notes in the vault yet.")
 
     G = build_graph(notes)
     ego = find_ego(notes)
@@ -552,70 +572,112 @@ def cmd_analyze(args):
 
     out_path = vault / "00-Dashboard" / "Graph-Analysis.md"
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"Report written to {out_path}")
+
+    summary = Table(title="Graph summary", box=box.ROUNDED, border_style="cyan", show_header=False)
+    summary.add_column(style="dim")
+    summary.add_column(justify="right", style="bold")
+    summary.add_row("Nodes", str(G.number_of_nodes()))
+    summary.add_row("Edges", str(G.number_of_edges()))
+    summary.add_row("Connected components", str(len(components)))
+    summary.add_row("Avg. clustering", f"{clustering:.3f}")
+    if path_len is not None:
+        summary.add_row("Avg. path length", f"{path_len:.3f}")
+        summary.add_row("Diameter", str(diameter))
+    console.print(summary)
+
+    console.print(f"[green]✓[/green] Report written to [bold]{out_path}[/bold]")
 
     if args.graphml:
         gpath = vault / "00-Dashboard" / "graph.graphml"
         nx.write_graphml(G, gpath)
-        print(f"Gephi export: {gpath}")
+        console.print(f"[green]✓[/green] Gephi export: [bold]{gpath}[/bold]")
 
 
 # ---------------------------------------------------------------------------
 # menu (interactive terminal interface)
 # ---------------------------------------------------------------------------
 
-def prompt(msg: str, default: str = None, required: bool = False) -> str:
-    suffix = f" [{default}]" if default is not None else ""
+MENU_ACCENT = "cyan"
+
+
+def ask_text(msg: str, default: str = None, required: bool = False) -> str:
+    label = f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}"
     while True:
-        val = input(f"{msg}{suffix}: ").strip()
+        val = Prompt.ask(label, default=default) if default is not None else Prompt.ask(label)
+        val = val.strip()
         if val:
             return val
         if default is not None:
             return default
         if not required:
             return ""
-        print("  This field is required.")
+        console.print("    [red]This field is required.[/red]")
 
 
-def prompt_yes_no(msg: str, default: bool = False) -> bool:
-    suffix = "[Y/n]" if default else "[y/N]"
-    val = input(f"{msg} {suffix}: ").strip().lower()
-    if not val:
-        return default
-    return val in ("y", "yes")
+def ask_bool(msg: str, default: bool = False) -> bool:
+    return Confirm.ask(f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}", default=default)
+
+
+def ask_choice(msg: str, choices: list, default: str = None) -> str:
+    return Prompt.ask(
+        f"  [{MENU_ACCENT}]›[/{MENU_ACCENT}] {msg}",
+        choices=choices,
+        default=default,
+        show_choices=True,
+    )
+
+
+def print_banner():
+    console.print()
+    body = Align.center(f"[dim italic]OSINT / Social Network Analysis toolkit[/dim italic]")
+    console.print(Panel(
+        body,
+        title=f"[bold {MENU_ACCENT}]osint-sna[/bold {MENU_ACCENT}]",
+        border_style=MENU_ACCENT,
+        box=box.ROUNDED,
+        padding=(1, 6),
+    ))
+
+
+def print_menu(actions: dict):
+    table = Table(box=box.ROUNDED, show_header=False, border_style=MENU_ACCENT, padding=(0, 2))
+    table.add_column(style=f"bold {MENU_ACCENT}", justify="right", width=3)
+    table.add_column(style="white")
+    for key, (label, _) in actions.items():
+        table.add_row(key, label)
+    table.add_row("[dim]0[/dim]", "[dim]Exit[/dim]")
+    console.print(table)
 
 
 def menu_init():
-    vault = Path(prompt("Path of the vault to create", required=True)).expanduser()
-    name = prompt("Your name for the ego node", default="Me")
-    project_name = prompt("Project name for the dashboard", default="") or None
-    platforms_raw = prompt("Platforms to map (comma-separated)", default="instagram")
+    vault = Path(ask_text("Path of the vault to create", required=True)).expanduser()
+    name = ask_text("Your name for the ego node", default="Me")
+    project_name = ask_text("Project name for the dashboard", default="") or None
+    platforms_raw = ask_text("Platforms to map (comma-separated)", default="instagram")
     platforms = [p.strip() for p in platforms_raw.split(",") if p.strip()]
+    console.print()
     cmd_init(argparse.Namespace(vault=vault, name=name, project_name=project_name, platforms=platforms))
 
 
 def menu_import_instagram():
-    vault = Path(prompt("Vault path", required=True)).expanduser()
-    export_dir = Path(prompt("Path to the unzipped Instagram export", required=True)).expanduser()
-    dry_run = prompt_yes_no("Simulate without writing changes? (dry-run)", default=False)
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    export_dir = Path(ask_text("Path to the unzipped Instagram export", required=True)).expanduser()
+    dry_run = ask_bool("Simulate without writing changes? (dry-run)", default=False)
+    console.print()
     cmd_import_instagram(argparse.Namespace(vault=vault, export_dir=export_dir, dry_run=dry_run))
 
 
 def menu_add_node():
-    vault = Path(prompt("Vault path", required=True)).expanduser()
-    name = prompt("Display name", required=True)
-    handle = prompt("Handle (username)", required=True)
-    platform = prompt("Platform", default="instagram")
-    while True:
-        degree_raw = prompt("Degree (2 or 3)", default="2")
-        if degree_raw in ("2", "3"):
-            degree = int(degree_raw)
-            break
-        print("  Enter 2 or 3.")
-    via = prompt("Bridge node slug (filename without .md)", required=True)
-    relationship = prompt("Relationship", default="observed_public")
-    location = prompt("Stated location", default="")
-    notes = prompt("Notes", default="")
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    name = ask_text("Display name", required=True)
+    handle = ask_text("Handle (username)", required=True)
+    platform = ask_text("Platform", default="instagram")
+    degree = int(ask_choice("Degree", choices=["2", "3"], default="2"))
+    via = ask_text("Bridge node slug (filename without .md)", required=True)
+    relationship = ask_text("Relationship", default="observed_public")
+    location = ask_text("Stated location", default="")
+    notes = ask_text("Notes", default="")
+    console.print()
     cmd_add_node(argparse.Namespace(
         vault=vault, name=name, handle=handle, platform=platform, degree=degree,
         via=via, relationship=relationship, location=location, notes=notes,
@@ -623,8 +685,9 @@ def menu_add_node():
 
 
 def menu_analyze():
-    vault = Path(prompt("Vault path", required=True)).expanduser()
-    graphml = prompt_yes_no("Also export graph.graphml for Gephi?", default=False)
+    vault = Path(ask_text("Vault path", required=True)).expanduser()
+    graphml = ask_bool("Also export graph.graphml for Gephi?", default=False)
+    console.print()
     cmd_analyze(argparse.Namespace(vault=vault, graphml=graphml))
 
 
@@ -635,32 +698,32 @@ def cmd_menu(args):
         "3": ("Add a level 2/3 node by hand", menu_add_node),
         "4": ("Analyze graph", menu_analyze),
     }
-    print("=== osint-sna — interactive menu ===")
+    print_banner()
     while True:
-        print("\nOptions:")
-        for key, (label, _) in actions.items():
-            print(f"  {key}. {label}")
-        print("  0. Exit")
+        console.print()
+        print_menu(actions)
         try:
-            choice = input("\nChoose an option: ").strip()
+            choice = Prompt.ask(
+                f"\n[bold {MENU_ACCENT}]›[/bold {MENU_ACCENT}] Select an option",
+                choices=list(actions) + ["0"],
+                show_choices=False,
+            )
         except (KeyboardInterrupt, EOFError):
-            print("\nBye!")
+            console.print(f"\n[{MENU_ACCENT}]Goodbye![/{MENU_ACCENT}]")
             return
-        if choice in ("0", "q", "exit", "quit"):
-            print("Bye!")
+        if choice == "0":
+            console.print(f"\n[{MENU_ACCENT}]Goodbye![/{MENU_ACCENT}]")
             return
-        action = actions.get(choice)
-        if not action:
-            print("Invalid option.")
-            continue
-        _, func = action
+        label, func = actions[choice]
+        console.rule(f"[bold {MENU_ACCENT}]{label}[/bold {MENU_ACCENT}]", style=MENU_ACCENT)
+        console.print()
         try:
             func()
-        except SystemExit as e:
-            if e.code:
-                print(f"Error: {e.code}")
+        except SystemExit:
+            pass
         except (KeyboardInterrupt, EOFError):
-            print("\nCancelled.")
+            console.print(f"\n[yellow]Cancelled.[/yellow]")
+        console.print()
 
 
 # ---------------------------------------------------------------------------

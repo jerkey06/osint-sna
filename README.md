@@ -51,7 +51,7 @@ cd osint-sna-tool
 ```
 
 This creates a local virtual environment (`venv/`) with the dependencies
-(`networkx`, `pyyaml`) and publishes an executable wrapper at
+(`networkx`, `pyyaml`, `rich`) and publishes an executable wrapper at
 `~/.local/bin/osint-sna`. Make sure `~/.local/bin` is on your `PATH`.
 
 Requires Python 3.9+.
