@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Instala osint-sna: crea un venv local con las dependencias y publica un
-# wrapper ejecutable en ~/.local/bin/osint-sna que apunta a este clon.
+# Installs osint-sna: creates a local venv with the dependencies and
+# publishes an executable wrapper at ~/.local/bin/osint-sna pointing at this clone.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 
-echo "Creando entorno virtual en $DIR/venv ..."
+echo "Creating virtual environment at $DIR/venv ..."
 python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install --quiet --upgrade pip
 "$DIR/venv/bin/pip" install --quiet -r "$DIR/requirements.txt"
@@ -18,9 +18,9 @@ exec "$DIR/venv/bin/python" "$DIR/osint_sna.py" "\$@"
 EOF
 chmod +x "$BIN_DIR/osint-sna"
 
-echo "Listo. Comando instalado en $BIN_DIR/osint-sna"
+echo "Done. Command installed at $BIN_DIR/osint-sna"
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
-  echo "Atención: $BIN_DIR no está en tu PATH. Agregalo a tu shell rc, ej:"
+  echo "Warning: $BIN_DIR is not on your PATH. Add it to your shell rc, e.g.:"
   echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
-echo "Probá con: osint-sna --help"
+echo "Try it with: osint-sna --help"

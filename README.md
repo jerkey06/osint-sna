@@ -1,109 +1,108 @@
 # osint-sna
 
-CLI para practicar OSINT y Análisis de Redes Sociales (SNA) mapeando tu propia
-red social como un grafo en [Obsidian](https://obsidian.md). Pensado para
-ejercicios de grados de separación, número de Bacon, y la teoría del mundo
-pequeño (Watts-Strogatz) aplicados a tu propia huella social.
+CLI for practicing OSINT and Social Network Analysis (SNA) by mapping your own
+social network as a graph in [Obsidian](https://obsidian.md). Built for
+exercises on degrees of separation, Bacon number, and small-world theory
+(Watts-Strogatz) applied to your own social footprint.
 
-## Qué hace
+## What it does
 
-- **`menu`** — interfaz de terminal interactiva: menú numerado que pide los
-  datos de cada operación y llama a las funciones de abajo. Se activa
-  automáticamente si corrés `osint-sna` sin ningún subcomando.
-- **`init`** — scaffolda un vault de Obsidian nuevo: carpetas por grado de
-  separación (nivel 0 = vos, nivel 1 = conexiones directas, nivel 2 = contactos
-  de tus contactos, nivel 3 = entorno indirecto), plantilla de nodo-persona,
-  dashboard, y un Graph View coloreado por nivel.
-- **`import-instagram`** — parsea tu export oficial de datos de Instagram
-  (followers/following) y genera automáticamente las notas de nivel 1, con la
-  relación calculada (`mutual` / `follows_me` / `i_follow`). Es idempotente:
-  correrlo de nuevo actualiza los datos de red sin pisar lo que hayas editado
-  a mano (bio, notas, tags).
-- **`add-node`** — scaffolding rápido para nodos de nivel 2/3 relevados a mano
-  (nombre, handle, grado, nodo puente), sin reescribir el frontmatter YAML
-  cada vez.
-- **`analyze`** — construye el grafo real a partir de los `[[wikilinks]]` del
-  vault (con [networkx](https://networkx.org/)) y calcula:
-  - Distancia real (BFS) desde vos hacia cada nodo — tu "número de Bacon"
-    respecto a cualquier persona del vault.
-  - Coeficiente de clustering promedio y longitud de camino promedio,
-    comparados contra un grafo aleatorio equivalente, para verificar la firma
-    de mundo pequeño.
-  - Los nodos más centrales (hubs) de tu red.
-  - Export opcional a `.graphml` para abrir en [Gephi](https://gephi.org/).
+- **`menu`** — interactive terminal interface: a numbered menu that prompts
+  for the data each operation needs and calls the functions below. Activates
+  automatically if you run `osint-sna` without any subcommand.
+- **`init`** — scaffolds a brand new Obsidian vault: folders by degree of
+  separation (level 0 = you, level 1 = direct connections, level 2 = contacts
+  of your contacts, level 3 = indirect surroundings), a person-node template,
+  a dashboard, and a Graph View colored by level.
+- **`import-instagram`** — parses your official Instagram data export
+  (followers/following) and automatically generates the level-1 notes, with
+  the relationship computed (`mutual` / `follows_me` / `i_follow`). It's
+  idempotent: running it again refreshes the network data without
+  overwriting what you edited by hand (bio, notes, tags).
+- **`add-node`** — quick scaffolding for level-2/3 nodes surveyed by hand
+  (name, handle, degree, bridge node), without rewriting the YAML
+  frontmatter every time.
+- **`analyze`** — builds the real graph from the vault's `[[wikilinks]]`
+  (with [networkx](https://networkx.org/)) and computes:
+  - Real distance (BFS) from you to each node — your "Bacon number"
+    relative to anyone in the vault.
+  - Average clustering coefficient and average path length, compared
+    against an equivalent random graph, to check for the small-world
+    signature.
+  - The most central nodes (hubs) of your network.
+  - Optional export to `.graphml` to open in [Gephi](https://gephi.org/).
 
-## Por qué existe
+## Why it exists
 
-Instagram (y la mayoría de las redes sociales) no exponen API pública para
-ver las conexiones de una cuenta ajena — automatizar eso sería scraping y
-violaría sus Términos de Servicio. Esta herramienta solo automatiza lo que es
-legítimo automatizar: **tus propios datos**, obtenidos vía el export oficial
-que cada plataforma te obliga a ofrecerte ("Descargá tu información"). Los
-niveles 2 y 3 se relevan a mano, mirando perfiles públicos, y la herramienta
-solo te ahorra la fricción de escribir el frontmatter YAML.
+Instagram (and most social networks) don't expose a public API to see
+another account's connections — automating that would be scraping and would
+violate their Terms of Service. This tool only automates what's legitimate
+to automate: **your own data**, obtained via the official export every
+platform is required to offer you ("Download your information"). Levels 2
+and 3 are surveyed by hand, by looking at public profiles, and the tool just
+saves you the friction of writing the YAML frontmatter.
 
-## Instalación
+## Installation
 
 ```bash
-git clone <url-de-este-repo> osint-sna-tool
+git clone <this-repo-url> osint-sna-tool
 cd osint-sna-tool
 ./install.sh
 ```
 
-Esto crea un entorno virtual local (`venv/`) con las dependencias
-(`networkx`, `pyyaml`) y publica un wrapper ejecutable en `~/.local/bin/osint-sna`.
-Asegurate de que `~/.local/bin` esté en tu `PATH`.
+This creates a local virtual environment (`venv/`) with the dependencies
+(`networkx`, `pyyaml`) and publishes an executable wrapper at
+`~/.local/bin/osint-sna`. Make sure `~/.local/bin` is on your `PATH`.
 
-Requiere Python 3.9+.
+Requires Python 3.9+.
 
-## Uso
+## Usage
 
-### Interfaz de terminal interactiva
+### Interactive terminal interface
 
 ```bash
 osint-sna
-# o explícitamente:
+# or explicitly:
 osint-sna menu
 ```
 
-Muestra un menú numerado (crear vault, importar Instagram, agregar nodo,
-analizar) que va pidiendo los datos por consola, sin tener que recordar los
-flags de cada subcomando.
+Shows a numbered menu (create vault, import Instagram, add node, analyze)
+that prompts for the data on the console, so you don't have to remember the
+flags for each subcommand.
 
-### Uso por línea de comandos (scripteable)
+### Command-line usage (scriptable)
 
 ```bash
-# 1. Crear un vault nuevo
-osint-sna init --vault ~/MiRedSocial --name "Tu Nombre" --platforms instagram
+# 1. Create a new vault
+osint-sna init --vault ~/MySocialNetwork --name "Your Name" --platforms instagram
 
-# 2. Importar tu export oficial de Instagram (nivel 1, automatizado)
-#    Instagram -> Configuración -> Centro de cuentas -> Tu información y
-#    permisos -> Exportar tu información -> "Seguidores y seguidos" -> JSON
-osint-sna import-instagram --vault ~/MiRedSocial --export-dir /ruta/al/export
+# 2. Import your official Instagram export (level 1, automated)
+#    Instagram -> Settings -> Accounts Center -> Your information and
+#    permissions -> Export your information -> "Followers and following" -> JSON
+osint-sna import-instagram --vault ~/MySocialNetwork --export-dir /path/to/export
 
-# 3. Agregar nodos de nivel 2/3 (relevados a mano)
-osint-sna add-node --vault ~/MiRedSocial \
-  --name "Nombre visible" --handle handle_de_instagram \
-  --degree 2 --via slug-del-nodo-puente --relationship follows_them
+# 3. Add level 2/3 nodes (surveyed by hand)
+osint-sna add-node --vault ~/MySocialNetwork \
+  --name "Display name" --handle instagram_handle \
+  --degree 2 --via bridge-node-slug --relationship follows_them
 
-# 4. Analizar el grafo
-osint-sna analyze --vault ~/MiRedSocial --graphml
+# 4. Analyze the graph
+osint-sna analyze --vault ~/MySocialNetwork --graphml
 ```
 
-Abrí el vault resultante en Obsidian. El Graph View viene preconfigurado con
-colores por nivel. Para las tablas del dashboard instalá el plugin comunitario
-[Dataview](https://github.com/blacksmithgu/obsidian-dataview).
+Open the resulting vault in Obsidian. The Graph View comes preconfigured
+with colors by level. For the dashboard tables, install the community
+plugin [Dataview](https://github.com/blacksmithgu/obsidian-dataview).
 
-## Notas éticas
+## Ethics notes
 
-- Los únicos datos obtenidos de forma automatizada son los tuyos propios, vía
-  export oficial de la plataforma — no se hace scraping de cuentas ajenas.
-- Para nodos de nivel 2/3 (personas sin consentimiento explícito para ser
-  perfiladas), guardá el mínimo necesario para el análisis de grafo, no un
-  perfil extendido.
-- Si vas a compartir un vault generado con esta herramienta, considerá
-  anonimizar los niveles 2/3 antes de hacerlo.
+- The only data obtained automatically is your own, via the platform's
+  official export — no scraping of other people's accounts is done.
+- For level 2/3 nodes (people without explicit consent to be profiled),
+  store the minimum needed for graph analysis, not an extended profile.
+- If you're going to share a vault generated with this tool, consider
+  anonymizing levels 2/3 first.
 
-## Licencia
+## License
 
-MIT — ver [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
