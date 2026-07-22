@@ -14,11 +14,11 @@ exercises on degrees of separation, Bacon number, and small-world theory
   separation (level 0 = you, level 1 = direct connections, level 2 = contacts
   of your contacts, level 3 = indirect surroundings), a person-node template,
   a dashboard, and a Graph View colored by level.
-- **`import-instagram`** — parses your official Instagram data export
-  (followers/following) and automatically generates the level-1 notes, with
-  the relationship computed (`mutual` / `follows_me` / `i_follow`). It's
-  idempotent: running it again refreshes the network data without
-  overwriting what you edited by hand (bio, notes, tags).
+- **`import`** — plugin-based importer: parses an official platform export
+  (or a custom CSV) and automatically generates the level-1 notes, with the
+  relationship computed per platform. It's idempotent: running it again
+  refreshes the network data without overwriting what you edited by hand
+  (bio, notes, tags). See [Import plugins](#import-plugins) below.
 - **`add-node`** — quick scaffolding for level-2/3 nodes surveyed by hand
   (name, handle, degree, bridge node), without rewriting the YAML
   frontmatter every time.
@@ -36,6 +36,39 @@ exercises on degrees of separation, Bacon number, and small-world theory
     random graph, to check for the small-world signature.
   - Optional export to `.graphml` (directed) to open in
     [Gephi](https://gephi.org/).
+
+## Import plugins
+
+Every platform importer is a self-contained file under [`plugins/`](plugins/),
+implementing a tiny `Importer` interface (see [`plugins/base.py`](plugins/base.py)):
+given an export folder, return a list of `Connection(handle, name,
+relationship, first_observed, extra)`. `osint-sna import` discovers them
+automatically — no registration step, no changes anywhere else.
+
+| Platform | File | What it reads | Relationship |
+|---|---|---|---|
+| `instagram` | `plugins/instagram.py` | `followers_1.json` / `following.json` | `follows_me` / `i_follow` / `mutual` |
+| `linkedin` | `plugins/linkedin.py` | `Connections.csv` | always `mutual` (invites are accepted by both sides) |
+| `twitter` | `plugins/twitter.py` | `data/follower.js` / `data/following.js` | `follows_me` / `i_follow` / `mutual` — X's export only has numeric account IDs, not handles, so notes are created under the ID with a profile link to identify them by hand |
+| `generic` | `plugins/generic.py` | any CSV, with column names you choose | whatever's in your relationship column (or a fixed default) |
+
+```bash
+osint-sna import --platform instagram --vault ~/MySocialNetwork --export-dir /path/to/export
+osint-sna import --platform linkedin  --vault ~/MySocialNetwork --export-dir /path/to/export
+osint-sna import --platform twitter   --vault ~/MySocialNetwork --export-dir /path/to/export
+
+# Custom dataset: any CSV, columns mapped via flags
+osint-sna import --platform generic --vault ~/MySocialNetwork --export-dir ~/data \
+  --file contacts.csv --handle-col handle --name-col name \
+  --relationship-col relationship --default-relationship observed_public
+```
+
+Run `osint-sna import --help` to see the full list of installed platforms.
+
+**Writing your own plugin:** drop a new `plugins/whatever.py` that subclasses
+`Importer` (platform name, `parse(export_dir, **options) -> list[Connection]`)
+and ends with `PLUGIN = YourClass`. It'll show up in `--platform` choices and
+the interactive menu automatically — see any existing plugin as a template.
 
 ## Why it exists
 
@@ -71,9 +104,9 @@ osint-sna
 osint-sna menu
 ```
 
-Shows a numbered menu (create vault, import Instagram, add node, analyze)
-that prompts for the data on the console, so you don't have to remember the
-flags for each subcommand.
+Shows a numbered menu (create vault, import a platform export, add node,
+analyze) that prompts for the data on the console, so you don't have to
+remember the flags for each subcommand.
 
 ### Command-line usage (scriptable)
 
@@ -81,10 +114,10 @@ flags for each subcommand.
 # 1. Create a new vault
 osint-sna init --vault ~/MySocialNetwork --name "Your Name" --platforms instagram
 
-# 2. Import your official Instagram export (level 1, automated)
+# 2. Import an official export (level 1, automated) — see Import plugins below
 #    Instagram -> Settings -> Accounts Center -> Your information and
 #    permissions -> Export your information -> "Followers and following" -> JSON
-osint-sna import-instagram --vault ~/MySocialNetwork --export-dir /path/to/export
+osint-sna import --platform instagram --vault ~/MySocialNetwork --export-dir /path/to/export
 
 # 3. Add level 2/3 nodes (surveyed by hand)
 osint-sna add-node --vault ~/MySocialNetwork \

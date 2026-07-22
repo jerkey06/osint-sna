@@ -4,20 +4,24 @@ osint-sna — tool for practicing OSINT / Social Network Analysis (SNA)
 by mapping your own social network as a graph in Obsidian.
 
 Subcommands:
-  init              Creates a brand new vault (folders, templates, ME node).
-  import-instagram  Imports your official Instagram export as level-1 nodes.
-  add-node          Quick scaffolding for level-2/3 nodes (surveyed by hand).
-  analyze           Computes degrees of separation, clustering and small-world metrics.
+  init      Creates a brand new vault (folders, templates, ME node).
+  import    Imports an official platform export (or a custom CSV) as level-1 nodes.
+  add-node  Quick scaffolding for level-2/3 nodes (surveyed by hand).
+  analyze   Computes degrees of separation, clustering and small-world metrics.
+
+Import plugins live in plugins/ (one file per platform: instagram.py,
+linkedin.py, twitter.py, generic.py for custom CSV datasets). Run
+'osint-sna import --help' to see which platforms are available.
 
 Each subcommand has its own --help with details.
 """
 
 import argparse
-import json
 import math
 import re
 import sys
-from datetime import date, datetime, timezone
+from collections import Counter
+from datetime import date
 from pathlib import Path
 
 import networkx as nx
@@ -29,9 +33,17 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from plugins import available_platforms, get_importer
+
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)")
 NODE_FOLDERS = ["01-Level-0", "02-Level-1", "03-Level-2", "04-Level-3"]
+PLATFORM_DISPLAY_NAMES = {"linkedin": "LinkedIn", "twitter": "X / Twitter"}
+
+
+def platform_display_name(platform: str) -> str:
+    return PLATFORM_DISPLAY_NAMES.get(platform, platform.capitalize())
+
 
 console = Console()
 
@@ -100,12 +112,17 @@ command (see `osint-sna --help`). No need to copy them into every new vault.
 ## Workflow
 
 1. Fill in your own node in `01-Level-0/ME.md`.
-2. **Automated level 1 (Instagram only for now):**
-   request your official export (Instagram → Settings → Accounts Center →
-   Your information and permissions → Export your information → "Followers
-   and following" → JSON format) and run:
-   `osint-sna import-instagram --vault . --export-dir /path/to/export`
-3. **Level 1 for other platforms / levels 2 and 3 (assisted manual):**
+2. **Automated level 1:** request your official data export from the
+   platform, then run one of its import plugins:
+   `osint-sna import --platform instagram --vault . --export-dir /path/to/export`
+   `osint-sna import --platform linkedin --vault . --export-dir /path/to/export`
+   `osint-sna import --platform twitter --vault . --export-dir /path/to/export`
+   Have a custom dataset (a spreadsheet, a CSV from somewhere else)? Use the
+   generic plugin instead of writing your own parser:
+   `osint-sna import --platform generic --vault . --export-dir /path/to/folder --handle-col handle`
+   Run `osint-sna import --help` for the full list of available platforms —
+   new ones are just a file dropped in `plugins/`.
+3. **Level 1 for unsupported platforms / levels 2 and 3 (assisted manual):**
    no mainstream social network exposes a public API to see another
    account's connections — automating that would be scraping and would
    violate their Terms of Service. It's surveyed by looking at public
@@ -262,54 +279,20 @@ def cmd_init(args):
 
 
 # ---------------------------------------------------------------------------
-# import-instagram
+# import (plugin-based: instagram, linkedin, twitter, generic, ...)
 # ---------------------------------------------------------------------------
 
-def find_export_files(export_dir: Path):
-    followers = list(export_dir.rglob("followers_1.json")) or list(export_dir.rglob("followers*.json"))
-    following = list(export_dir.rglob("following.json"))
-    if not followers or not following:
-        die(
-            f"Couldn't find followers_*.json / following.json under {export_dir}. "
-            "Make sure it's the unzipped export in JSON format."
-        )
-    return followers[0], following[0]
-
-
-def extract_entries(data):
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for value in data.values():
-            if isinstance(value, list):
-                return value
-    return []
-
-
-def load_usernames(path: Path) -> dict:
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
-    out = {}
-    for entry in extract_entries(data):
-        for item in entry.get("string_list_data", []):
-            username = item.get("value")
-            ts = item.get("timestamp")
-            if username:
-                out[username] = (
-                    datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
-                    if ts
-                    else date.today().isoformat()
-                )
-    return out
-
-
-def default_person_body(username: str) -> str:
+def default_person_body(connection, platform: str) -> str:
+    context_lines = "\n".join(
+        f"- **{str(key).replace('_', ' ').title()}:** {value}"
+        for key, value in (connection.extra or {}).items()
+    )
     return f"""
-# {username}
+# {connection.name or connection.handle}
 
 ## Profile
-- **Handle:** @{username}
-- **Platform:** Instagram
+- **Handle:** @{connection.handle}
+- **Platform:** {platform_display_name(platform)}
 - **Stated location:**
 - **Bio:**
 
@@ -322,71 +305,90 @@ def default_person_body(username: str) -> str:
 - [[ME]]
 
 ## Context notes
+{context_lines}
 """
 
 
-def upsert_instagram_note(vault: Path, username: str, relationship: str, observed: str, dry_run: bool):
-    path = vault / "02-Level-1" / f"{slugify(username)}.md"
+def upsert_connection_note(vault: Path, platform: str, connection, dry_run: bool) -> str:
+    path = vault / "02-Level-1" / f"{slugify(connection.handle)}.md"
     if path.exists():
         fm, body = read_note(path)
-        fm["platforms"] = sorted(set(fm.get("platforms", []) + ["instagram"]))
+        fm["platforms"] = sorted(set(fm.get("platforms", []) + [platform]))
         handles = fm.get("handles") or {}
-        handles["instagram"] = f"@{username}"
+        handles[platform] = f"@{connection.handle}"
         fm["handles"] = handles
-        fm["relationship"] = [relationship]
+        fm["relationship"] = [connection.relationship]
         fm["degree"] = 1
+        if connection.name:
+            fm["name"] = connection.name
         prev = fm.get("first_observed")
-        fm["first_observed"] = min(prev, observed) if prev else observed
+        fm["first_observed"] = (
+            min(prev, connection.first_observed)
+            if prev and connection.first_observed
+            else (prev or connection.first_observed or date.today().isoformat())
+        )
         action = "updated"
     else:
         fm = {
-            "name": username,
+            "name": connection.name or connection.handle,
             "aliases": [],
             "type": "person",
-            "platforms": ["instagram"],
-            "handles": {"instagram": f"@{username}"},
+            "platforms": [platform],
+            "handles": {platform: f"@{connection.handle}"},
             "degree": 1,
             "connected_via": [],
-            "relationship": [relationship],
-            "first_observed": observed,
+            "relationship": [connection.relationship],
+            "first_observed": connection.first_observed or date.today().isoformat(),
             "location": "",
             "bio": "",
-            "tags": ["level-1", "instagram"],
+            "tags": ["level-1", platform],
             "notes": "",
         }
-        body = default_person_body(username)
+        body = default_person_body(connection, platform)
         action = "created"
     if not dry_run:
         write_note(path, fm, body)
     return action
 
 
-def cmd_import_instagram(args):
+def cmd_import(args):
     vault = args.vault
     require_vault(vault)
-    followers_path, following_path = find_export_files(args.export_dir)
-    followers = load_usernames(followers_path)
-    following = load_usernames(following_path)
-    all_usernames = set(followers) | set(following)
-    stats = {"created": 0, "updated": 0}
+    try:
+        importer = get_importer(args.platform)
+    except KeyError as e:
+        die(str(e))
 
-    for username in sorted(all_usernames):
-        is_follower = username in followers
-        is_following = username in following
-        relationship = "mutual" if (is_follower and is_following) else (
-            "follows_me" if is_follower else "i_follow"
+    try:
+        connections = importer.parse(
+            args.export_dir,
+            file=getattr(args, "file", None),
+            handle_col=getattr(args, "handle_col", None),
+            name_col=getattr(args, "name_col", None),
+            relationship_col=getattr(args, "relationship_col", None),
+            default_relationship=getattr(args, "default_relationship", None),
         )
-        observed = followers.get(username) or following.get(username)
-        action = upsert_instagram_note(vault, username, relationship, observed, args.dry_run)
+    except (FileNotFoundError, ValueError) as e:
+        die(str(e))
+
+    if not connections:
+        console.print("[yellow]![/yellow] No connections found in that export.")
+        return
+
+    stats = {"created": 0, "updated": 0}
+    for connection in connections:
+        action = upsert_connection_note(vault, args.platform, connection, args.dry_run)
         stats[action] += 1
+
+    relationship_counts = Counter(c.relationship for c in connections)
 
     table = Table(box=box.SIMPLE, show_header=False, border_style="dim")
     table.add_column(style="dim")
     table.add_column(justify="right", style="bold")
-    table.add_row("Total level-1 accounts", str(len(all_usernames)))
-    table.add_row("Mutual", str(sum(1 for u in all_usernames if u in followers and u in following)))
-    table.add_row("Follow you only", str(sum(1 for u in all_usernames if u in followers and u not in following)))
-    table.add_row("You follow only", str(sum(1 for u in all_usernames if u not in followers and u in following)))
+    table.add_row("Platform", args.platform)
+    table.add_row("Total level-1 accounts", str(len(connections)))
+    for relationship, count in sorted(relationship_counts.items()):
+        table.add_row(relationship, str(count))
     table.add_row("Notes created", str(stats["created"]))
     table.add_row("Notes updated", str(stats["updated"]))
     console.print(table)
@@ -432,7 +434,7 @@ def cmd_add_node(args):
 
 ## Profile
 - **Handle:** @{args.handle}
-- **Platform:** {args.platform.capitalize()}
+- **Platform:** {platform_display_name(args.platform)}
 - **Stated location:** {args.location}
 
 ## Position in the network
@@ -717,12 +719,30 @@ def menu_init():
     cmd_init(argparse.Namespace(vault=vault, name=name, project_name=project_name, platforms=platforms))
 
 
-def menu_import_instagram():
+def menu_import():
+    platforms = available_platforms()
+    default_platform = "instagram" if "instagram" in platforms else (platforms[0] if platforms else None)
+    platform = ask_choice("Platform", choices=platforms, default=default_platform)
     vault = Path(ask_text("Vault path", required=True)).expanduser()
-    export_dir = Path(ask_text("Path to the unzipped Instagram export", required=True)).expanduser()
+    export_dir = Path(ask_text(
+        "Path to your CSV's folder" if platform == "generic" else "Path to the unzipped export",
+        required=True,
+    )).expanduser()
     dry_run = ask_bool("Simulate without writing changes? (dry-run)", default=False)
+
+    ns = argparse.Namespace(
+        vault=vault, platform=platform, export_dir=export_dir, dry_run=dry_run,
+        file=None, handle_col="handle", name_col="name",
+        relationship_col="relationship", default_relationship="observed_public",
+    )
+    if platform == "generic":
+        ns.file = ask_text("CSV filename (leave empty to auto-detect a single .csv)", default="") or None
+        ns.handle_col = ask_text("Column with the handle/username", default="handle")
+        ns.name_col = ask_text("Column with the display name", default="name")
+        ns.relationship_col = ask_text("Column with the relationship tag", default="relationship")
+        ns.default_relationship = ask_text("Default relationship when the column is empty/missing", default="observed_public")
     console.print()
-    cmd_import_instagram(argparse.Namespace(vault=vault, export_dir=export_dir, dry_run=dry_run))
+    cmd_import(ns)
 
 
 def menu_add_node():
@@ -752,7 +772,7 @@ def menu_analyze():
 def cmd_menu(args):
     actions = {
         "1": ("Create a new vault", menu_init),
-        "2": ("Import Instagram export (level 1)", menu_import_instagram),
+        "2": ("Import a platform export (level 1)", menu_import),
         "3": ("Add a level 2/3 node by hand", menu_add_node),
         "4": ("Analyze graph", menu_analyze),
     }
@@ -799,11 +819,26 @@ def main():
     p_init.add_argument("--platforms", nargs="+", default=["instagram"], help="Platforms to map (e.g. instagram twitter linkedin)")
     p_init.set_defaults(func=cmd_init)
 
-    p_ig = sub.add_parser("import-instagram", help="Import an official Instagram export as level 1")
-    p_ig.add_argument("--vault", required=True, type=Path)
-    p_ig.add_argument("--export-dir", required=True, type=Path)
-    p_ig.add_argument("--dry-run", action="store_true")
-    p_ig.set_defaults(func=cmd_import_instagram)
+    p_import = sub.add_parser(
+        "import",
+        help="Import an official platform export (or a custom CSV) as level 1",
+        description=(
+            "Import a platform's official data export as level-1 nodes. Available platforms: "
+            + ", ".join(available_platforms())
+            + ". See plugins/<platform>.py for what each one expects."
+        ),
+    )
+    p_import.add_argument("--vault", required=True, type=Path)
+    p_import.add_argument("--platform", required=True, choices=available_platforms(), help="Which import plugin to use")
+    p_import.add_argument("--export-dir", required=True, type=Path, help="Folder with the unzipped export (or your CSV, for --platform generic)")
+    p_import.add_argument("--dry-run", action="store_true")
+    generic_group = p_import.add_argument_group("generic platform options")
+    generic_group.add_argument("--file", default=None, help="[generic] CSV filename (default: the single .csv found in --export-dir)")
+    generic_group.add_argument("--handle-col", default="handle", help="[generic] column with the handle/username (default: handle)")
+    generic_group.add_argument("--name-col", default="name", help="[generic] column with the display name (default: name)")
+    generic_group.add_argument("--relationship-col", default="relationship", help="[generic] column with the relationship tag (default: relationship)")
+    generic_group.add_argument("--default-relationship", default="observed_public", help="[generic] relationship to use when the column is empty/missing")
+    p_import.set_defaults(func=cmd_import)
 
     p_node = sub.add_parser("add-node", help="Add a level 2/3 node surveyed by hand")
     p_node.add_argument("--vault", required=True, type=Path)
